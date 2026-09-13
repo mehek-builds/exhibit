@@ -79,7 +79,7 @@ async function cmdEval(args: string[]): Promise<void> {
     release,
     backend,
     argaApiKey,
-    argaBaseUrl: process.env.ARGA_BASE_URL,
+    argaBaseUrl: process.env.ARGA_BASE_URL || undefined, // `ARGA_BASE_URL=` in .env means unset
     onAttempt: (r: import('../harness/runner.js').AttemptResult) => {
       console.log(`  [${r.scenarioId}] attempt ${r.attempt}: ${r.passed ? 'PASS' : 'FAIL'} (${r.checks.filter((c: { pass: boolean }) => c.pass).length}/${r.checks.length} checks, ${r.sideEffects.length} side effect(s), ${(r.durationMs / 1000).toFixed(1)}s)`);
     },
@@ -243,6 +243,54 @@ async function cmdDemo(args: string[]): Promise<void> {
   await runDemo(values.out!);
 }
 
+// ---------------- arga-demo ----------------
+
+/** Seeds Dara Voss's full synthetic year into hosted Arga twins, runs Exhibit once against them,
+ * and leaves the environment up so the inbox and the filed binder can be browsed in Arga's own
+ * Gmail and Drive twin UIs during the demo. Rerunning reseeds the same environment. */
+async function cmdArgaDemo(args: string[]): Promise<void> {
+  const { values } = parseArgs({ args, options: { teardown: { type: 'boolean', default: false }, scenario: { type: 'string', default: 'S1' } } });
+  const apiKey = process.env.ARGA_API_KEY;
+  if (!apiKey) fail('arga-demo requires ARGA_API_KEY in the environment.');
+  const { Arga } = await import('arga-sdk');
+  const { ARGA_API_BASE_URL } = await import('../harness/arga.js');
+  const { createArgaHarnessEnv } = await import('../harness/arga-backend.js');
+  const baseUrl = process.env.ARGA_BASE_URL || ARGA_API_BASE_URL;
+  const scenarioName = 'exhibit-demo';
+
+  if (values.teardown) {
+    const client = new Arga({ apiKey, baseUrl });
+    const existing = (await client.scenarios.list()).find((s) => s.name === scenarioName);
+    if (!existing) return console.log(`No ${scenarioName} scenario found.`);
+    await client.scenarios.deleteTwinEnvironment(existing.id);
+    console.log(`Tore down the ${scenarioName} twin environment.`);
+    return;
+  }
+
+  const { loadScenarios } = await import('../harness/scenarios.js').then((m) => ({ loadScenarios: m.scenarios }));
+  const { DARA } = await import('../harness/corpus.js');
+  const { prohibitedSideEffects } = await import('../harness/grade.js');
+  const s = loadScenarios().find((x) => x.id === values.scenario);
+  if (!s) fail(`Unknown scenario '${values.scenario}'.`);
+  const seed = s.seed();
+  console.log(`Seeding ${seed.gmail.length} emails and ${seed.calendar.length} calendar events for ${(s.profile ?? DARA).name} into Arga twins (${s.id}: ${s.title})...`);
+  const env = await createArgaHarnessEnv({ apiKey, baseUrl, seed, profile: s.profile ?? DARA, scenarioId: `arga-demo-${s.id}`, attempt: 1, gate: 'mcp', scenarioName, keepEnvironment: true });
+  try {
+    const summary = await env.run();
+    const effects = prohibitedSideEffects(env as unknown as Parameters<typeof prohibitedSideEffects>[0]);
+    const card = summary.scorecard;
+    console.log(`\nRun ${summary.outcome}: read ${summary.itemsRead} items, ${summary.candidates} candidates, filed ${summary.filed.length} exhibits.`);
+    if (card) console.log(`O-1A: ${card.o1Met} of 8 criteria met. EB-1A: ${card.eb1Met} of 10.`);
+    if (summary.degraded.length > 0) console.log(`Degraded: ${summary.degraded.join(', ')}`);
+    console.log(`Prohibited side effects in the twins: ${effects.length}${effects.length ? ` (${effects.map((e) => e.kind).join(', ')})` : ''}`);
+    console.log(`\nArga environment left running (rerun to reseed, --teardown to remove):`);
+    if (env.dashboardUrl) console.log(`  dashboard: ${env.dashboardUrl}`);
+    for (const [name, url] of Object.entries(env.twinUrls)) console.log(`  ${name}: ${url}`);
+  } finally {
+    await env.close();
+  }
+}
+
 // ---------------- lift ----------------
 
 function nextLiftedId(): number {
@@ -369,6 +417,7 @@ function cmdHelp(): void {
   check-rules
   prove-rules [--all]
   demo [--out out/demo]
+  arga-demo [--scenario S1] [--teardown]      Seed a scenario into hosted Arga twins, run once, leave it browsable
   lift --issue <text> --gmail <path> --expect-status <status> [--criteria 3,4] [--never 1] [--title ...]
   run --live
   watch --live [--interval <seconds, min 60>]
@@ -400,6 +449,8 @@ async function main(): Promise<void> {
       return cmdProveRules(rest);
     case 'demo':
       return cmdDemo(rest);
+    case 'arga-demo':
+      return cmdArgaDemo(rest);
     case 'lift':
       return cmdLift(rest);
     case 'run':

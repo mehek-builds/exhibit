@@ -126,3 +126,24 @@ export function parseFigure(text: string): number | null {
   if (unit === 'm' || unit === 'million') n *= 1_000_000;
   return n;
 }
+
+/** `Promise.all(items.map(fn))` with at most `limit` calls in flight; results keep input order.
+ * After the first rejection no new calls start, and the returned promise rejects with it. */
+export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  let failed = false;
+  const worker = async () => {
+    while (next < items.length && !failed) {
+      const i = next++;
+      try {
+        out[i] = await fn(items[i]!, i);
+      } catch (err) {
+        failed = true; // stop starting new calls once one has failed
+        throw err;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, worker));
+  return out;
+}

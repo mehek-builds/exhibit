@@ -11,11 +11,13 @@ import type { FounderProfile } from '../src/types.js';
 // src/apps/live/ runs against these twins and against the real APIs, through `rootUrl` /
 // `baseUrl` overrides.
 //
-// UNCONFIRMED (test in the first 45 minutes, per PRD 7.1): the exact twin identifiers (this file
-// tries both the hyphenated PRD spelling and the SDK's underscored `KnownTwinName` spelling),
-// whether each Google product twin gets its own base URL or shares one Workspace host, and which
-// env var name (if any) a twin uses for its access token versus falling back to the run's
-// `proxyToken`.
+// Verified against live Arga on 2026-09-13 (docs/ARGA.md): twin identifiers are underscored
+// (`google_calendar`); each Google product twin gets its own base URL (Drive, Docs and Sheets share
+// one store behind them); each twin names its own access-token env var (see `tokenFor`).
+
+/** The SDK's own default (app.argalabs.com) serves the web app, not the API: every call there
+ * returns HTML. The API host is api.argalabs.com (verified 2026-09-13). */
+export const ARGA_API_BASE_URL = 'https://api.argalabs.com';
 
 // PRD 7.1 lists 8 twins including Twilio (the text channel, S20), but the installed arga-sdk's
 // `KnownTwinName` union (node_modules/arga-sdk/dist/index.d.ts) has no "twilio" entry -- box,
@@ -48,7 +50,7 @@ export interface ProvisionOptions {
 }
 
 export async function provisionArgaTwins(opts: ProvisionOptions): Promise<ArgaRun> {
-  const client = new Arga({ apiKey: opts.apiKey, baseUrl: opts.baseUrl });
+  const client = new Arga({ apiKey: opts.apiKey, baseUrl: opts.baseUrl ?? ARGA_API_BASE_URL });
   const { runId } = await client.twins.provision({ twins: (opts.twins ?? DEFAULT_TWINS) as TwinName[], ttlMinutes: opts.ttlMinutes, scenarioId: opts.scenarioId });
 
   const pollMs = opts.pollMs ?? 2500;
@@ -86,14 +88,20 @@ function must(twin: TwinInstance | undefined, name: string): TwinInstance {
   return twin;
 }
 
-/** Prefers a twin-declared token env var; falls back to the run's shared proxy token. */
-function tokenFor(run: ArgaRun, twin: TwinInstance | undefined): string {
-  return twin?.envVars?.GOOGLE_ACCESS_TOKEN ?? twin?.envVars?.ACCESS_TOKEN ?? twin?.envVars?.TOKEN ?? run.proxyToken ?? '';
+/** Prefers a twin-declared token env var; falls back to the run's shared proxy token. Each twin
+ * names its own (verified live 2026-09-13): gmail GMAIL_ACCESS_TOKEN, google_calendar
+ * GOOGLE_CALENDAR_ACCESS_TOKEN, google_drive/docs/sheets GOOGLE_ACCESS_TOKEN. The proxy token is
+ * NOT accepted by the twins' Google APIs (401), so any `*ACCESS_TOKEN` var wins over it. */
+export function tokenFor(run: Pick<ArgaRun, 'proxyToken'>, twin: TwinInstance | undefined): string {
+  const vars = twin?.envVars ?? {};
+  const named = Object.entries(vars).find(([k]) => /ACCESS_TOKEN$/.test(k))?.[1];
+  return named ?? vars.TOKEN ?? run.proxyToken ?? '';
 }
 
-/** Builds an `Apps` from the twin base URLs and tokens in a provisioned run. `profile` is
- * accepted for parity with other deps builders; nothing here currently reads it. */
-export function argaApps(run: ArgaRun, owner: string, profile?: FounderProfile): Apps {
+/** Builds an `Apps` from the twin base URLs and tokens in a provisioned run. `fallback` supplies
+ * GitHub and LinkedIn when those twins are not provisioned (PRD 7.1 fallback: read from seeded
+ * fixtures). `profile` is accepted for parity with other deps builders; nothing here reads it. */
+export function argaApps(run: ArgaRun, owner: string, profile?: FounderProfile, fallback?: Partial<Pick<Apps, 'github' | 'linkedin'>>): Apps {
   void profile;
   const gmailTwin = must(findTwin(run, 'gmail'), 'gmail');
   const calendarTwin = must(findTwin(run, 'google-calendar', 'google_calendar'), 'google-calendar');
@@ -108,8 +116,8 @@ export function argaApps(run: ArgaRun, owner: string, profile?: FounderProfile):
   const drive = createGoogleApps({ auth: tokenFor(run, driveTwin), rootUrl: driveTwin.baseUrl, owner }).drive;
   const docs = createGoogleApps({ auth: tokenFor(run, docsTwin), rootUrl: docsTwin.baseUrl, owner }).docs;
   const sheets = createGoogleApps({ auth: tokenFor(run, sheetsTwin), rootUrl: sheetsTwin.baseUrl, owner }).sheets;
-  const github = createGithubApi({ token: tokenFor(run, githubTwin) || undefined, baseUrl: githubTwin?.baseUrl });
-  const linkedin = createLinkedinApi({ baseUrl: linkedinTwin?.baseUrl, token: tokenFor(run, linkedinTwin) || undefined });
+  const github = !githubTwin && fallback?.github ? fallback.github : createGithubApi({ token: tokenFor(run, githubTwin) || undefined, baseUrl: githubTwin?.baseUrl });
+  const linkedin = !linkedinTwin && fallback?.linkedin ? fallback.linkedin : createLinkedinApi({ baseUrl: linkedinTwin?.baseUrl, token: tokenFor(run, linkedinTwin) || undefined });
 
   return { gmail, calendar, drive, docs, sheets, github, linkedin };
 }
@@ -132,13 +140,13 @@ export async function fetchStubHits(twin: TwinInstance, proxyToken: string): Pro
 }
 
 export async function extend(apiKey: string, runId: string, opts: { ttlMinutes?: number; baseUrl?: string } = {}): Promise<void> {
-  await new Arga({ apiKey, baseUrl: opts.baseUrl }).twins.extend(runId, { ttlMinutes: opts.ttlMinutes });
+  await new Arga({ apiKey, baseUrl: opts.baseUrl ?? ARGA_API_BASE_URL }).twins.extend(runId, { ttlMinutes: opts.ttlMinutes });
 }
 
 export async function reset(apiKey: string, runId: string, opts: { baseUrl?: string } = {}): Promise<void> {
-  await new Arga({ apiKey, baseUrl: opts.baseUrl }).twins.reset(runId);
+  await new Arga({ apiKey, baseUrl: opts.baseUrl ?? ARGA_API_BASE_URL }).twins.reset(runId);
 }
 
 export async function teardown(apiKey: string, runId: string, opts: { baseUrl?: string } = {}): Promise<void> {
-  await new Arga({ apiKey, baseUrl: opts.baseUrl }).twins.teardown(runId);
+  await new Arga({ apiKey, baseUrl: opts.baseUrl ?? ARGA_API_BASE_URL }).twins.teardown(runId);
 }

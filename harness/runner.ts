@@ -121,13 +121,9 @@ export function listScenarios(): Scenario[] {
   return loadScenarios();
 }
 
-/** Wraps ArgaTwinsAdapter with a `recordOp` (and structurally matches TwinsHandle) so an Arga-backed
- * env can be passed anywhere a HarnessEnv is expected (s.play/s.grade/prohibitedSideEffects/
- * knownAnswers, and harness/presets.ts's `env.twins.recordOp(...)` calls for the Twilio/DropboxSign/
- * DeepL fakes). ArgaTwinsAdapter has no local op-log injection point (docs/ARGA.md: the adapter's
- * `ops` come entirely from each twin's hosted `/admin/state` op log), so `recordOp` here is a
- * documented no-op -- a scenario that exercises those fakes against the Arga backend will not see
- * their writes reflected in `env.twins.ops` until arga-backend.ts adds real support. */
+/** Wraps ArgaTwinsAdapter so it structurally matches TwinsHandle and an Arga-backed env can be
+ * passed anywhere a HarnessEnv is expected (s.play/s.grade/prohibitedSideEffects/knownAnswers, and
+ * harness/presets.ts's `env.twins.recordOp(...)` calls for the Twilio/DropboxSign/DeepL fakes). */
 function wrapArgaTwins(adapter: ArgaTwinsAdapter): TwinsHandle {
   return {
     get backend() {
@@ -142,8 +138,14 @@ function wrapArgaTwins(adapter: ArgaTwinsAdapter): TwinsHandle {
     state: () => adapter.state(),
     drivePath: (fileId) => adapter.drivePath(fileId),
     driveContent: (fileId) => adapter.driveContent(fileId),
-    recordOp: () => {
-      /* no-op: see doc comment above */
+    recordOp: (app, op, actor, detail) => adapter.recordOp(app, op, actor, detail),
+    settle: async () => {
+      await adapter.settle();
+      await adapter.refresh();
+      // The grade reads this refresh; a twin that could not be read here must fail the attempt,
+      // never grade an empty state as clean (the per-run guard only covers env.run()).
+      if (adapter.evidenceUnavailable) throw new Error(`arga_side_effect_evidence_unavailable: ${adapter.evidenceGaps.join(', ')}`);
+      if (adapter.degraded.size > 0) throw new Error(`arga_twin_degraded: ${[...adapter.degraded].join(', ')}`);
     },
     adminAddMessage: (msg) => adapter.adminAddMessage(msg),
     adminShareFile: (fileId, email) => adapter.adminShareFile(fileId, email),
@@ -176,9 +178,18 @@ async function buildEnv(s: Scenario, attempt: number, opts: MatrixOptions): Prom
       reuseArgaScenarioId: attempt > 1 ? argaScenarioIdByScenario.get(s.id) : undefined,
       baseUrl: opts.argaBaseUrl,
       twins: opts.argaTwins,
+      extensions: s.features,
+      twinOptions: s.twinOptions,
+      now: s.env?.now,
     });
     argaScenarioIdByScenario.set(s.id, argaEnv.argaScenarioId);
-    return { ...argaEnv, twins: wrapArgaTwins(argaEnv.twins) };
+    // The same 6.13/6.14 wiring createHarnessEnv applies, built against the wrapped env so the
+    // fakes (Twilio, Dropbox Sign, verifier APIs) reach its twins.
+    const env: HarnessEnv = { ...argaEnv, twins: wrapArgaTwins(argaEnv.twins) };
+    if (s.env?.twilio) env.deps.apps.twilio = s.env.twilio(env);
+    if (s.env?.extensions) env.deps.extensions = s.env.extensions(env);
+    if (s.env?.structured) env.deps.structured = s.env.structured;
+    return env;
   }
   return createHarnessEnv({
     seed: s.seed(),
@@ -210,6 +221,7 @@ export async function runScenarioAttempt(s: Scenario, attempt: number, opts: Mat
   try {
     env = await buildEnv(s, attempt, opts);
     await s.play({ env });
+    await env.twins.settle?.();
     checks = await s.grade({ env });
     sideEffects = prohibitedSideEffects(env);
     stubHits = env.twins.state().stubHits;
