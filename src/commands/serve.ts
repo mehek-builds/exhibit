@@ -21,6 +21,10 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
+export function hasCompleteTwilioWebhookEnv(env: NodeJS.ProcessEnv): boolean {
+  return Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_SENDER && env.TWILIO_PUBLIC_URL);
+}
+
 export async function cmdServe(args: string[]): Promise<void> {
   const { values } = parseArgs({ args, options: { interval: { type: 'string', default: '3600' }, port: { type: 'string' } } });
   const port = portNumber(values.port ?? process.env.PORT ?? '8787');
@@ -37,7 +41,7 @@ export async function cmdServe(args: string[]): Promise<void> {
   console.log('Features:');
   for (const f of features) console.log(`  ${f.enabled ? 'on ' : 'off'}  ${f.id}: ${f.reason}`);
 
-  const twilioReady = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PUBLIC_URL;
+  const twilioReady = hasCompleteTwilioWebhookEnv(process.env);
   let stopped = false;
   let running = false;
   let runAgainAfter = false;

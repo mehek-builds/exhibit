@@ -40,6 +40,12 @@ function isIanaTimeZone(value: string): boolean {
   }
 }
 
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 const QuietHoursSchema = z.object({
   start: z.string().refine(isClockTime, 'must be a valid HH:MM time'),
   end: z.string().refine(isClockTime, 'must be a valid HH:MM time'),
@@ -56,12 +62,12 @@ export const ProfileInputSchema = z.object({
   ownAccounts: z.array(z.string()).default([]),
   linkedinId: z.string().default(''),
   field: z.string().min(1),
-  targetFilingDate: z.string().min(1),
+  targetFilingDate: z.string().refine(isIsoDate, 'must be a valid YYYY-MM-DD date'),
   recommenderCandidates: z.array(RecommenderSchema).default([]),
   phone: z.string().regex(/^\+[1-9]\d{6,14}$/, 'must be in E.164 format').optional(),
   quietHours: QuietHoursSchema.optional(),
   routes: z.array(z.enum(['O-1A', 'EB-1A'])).min(1).optional(),
-  scanSince: z.string().optional(),
+  scanSince: z.string().refine(isIsoDate, 'must be a valid YYYY-MM-DD date').optional(),
   coauthors: z.array(z.string()).optional(),
   translationOptIn: z.array(z.string()).optional(),
   jobTitle: z.string().optional(),

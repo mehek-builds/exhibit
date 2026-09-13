@@ -112,6 +112,7 @@ export function createSigningExtension(opts: SigningExtensionOptions): AgentExte
       if (dayMode && (!client.testMode || !(profile.controlledEmails ?? []).map((e) => e.toLowerCase()).includes(signerEmail))) {
         trace.tool('dropboxsign.signature_request.send', { letter_id: row.letter_id, signer: r.email, testMode: client.testMode }, undefined, 'refused: day mode requires test mode and a controlled signer address');
         ledger.event({ run_id: runId, trace_id: trace.traceId, kind: 'signature', detail: { request_id: null, letter_id: row.letter_id, status: 'declined', test_mode: client.testMode, signer_email: r.email, reason: 'day-mode refusal: signer not controlled or not test mode' }, at: now.toISOString() });
+        writeState(ledger, row.letter_id, { ...state, stage: 'declined' });
         return;
       }
 

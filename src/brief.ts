@@ -130,7 +130,7 @@ function systemParagraph(m: MatrixResult): string {
     '| Plumbing (the founder\'s own data and the binder) | Gmail, Google Calendar, Google Drive, Google Sheets, Google Docs, GitHub | Arga twins |',
     '| Discover evidence she never saw | GDELT (world news), Podcast Index, Hacker News, Product Hunt, OpenReview, ORCID, Hugging Face Hub, SEC EDGAR (Form D), USPTO PatentSearch | Recorded responses replayed with injected edge cases (S21); a discovered item must name the founder and a second identifier |',
     '| Verify the numbers from official data | OpenAlex, Crossref, Semantic Scholar (journals and citations), BLS and O*NET (the 90th-percentile wage for her occupation code), ecosyste.ms (package adoption) | Recorded responses; every figure still needs two sources and her approval |',
-    '| Make the binder tamper-evident | Internet Archive Save Page Now (dated third-party copies of public sources), OpenTimestamps (each exhibit\'s hash anchored in Bitcoin) | Verified by `exhibit verify` (S22), which anyone can re-run |',
+    '| Make the binder tamper-evident | Internet Archive Save Page Now (dated third-party copies of public sources), OpenTimestamps (each stampable artifact hash is submitted to timestamp calendars; Bitcoin anchoring exists only after confirmation) | Verified by `exhibit verify` (S22), which anyone can re-run |',
     '| Act | Dropbox Sign (letters out for signature, test mode), DeepL API Free (draft translations, flagged for a certified translator), Twilio free trial (the message thread) | State read back from each service (S23, S24); Twilio twin (S20) |',
     '| After filing | USCIS Case Status API (Torch) | Sandbox only; production access pending USCIS approval |',
   ].join('\n');
@@ -506,8 +506,20 @@ function corroborationSection(m: MatrixResult): string {
 // ---------------- section 10b: integrity and integrations ----------------
 
 function integrityAndIntegrationsSection(m: MatrixResult): string {
-  const timestamps = allEvents(m, 'timestamp');
-  const confirmed = timestamps.filter((e) => e.detail.status === 'confirmed').length;
+  let timestamped = 0;
+  let confirmed = 0;
+  let pendingProofs = 0;
+  for (const attempt of m.attempts) {
+    const latestByFile = new Map<string, string>();
+    for (const event of attempt.metrics?.events ?? []) {
+      if (event.kind === 'timestamp' && typeof event.detail.file_id === 'string') {
+        latestByFile.set(event.detail.file_id, String(event.detail.status ?? ''));
+      }
+    }
+    timestamped += latestByFile.size;
+    confirmed += [...latestByFile.values()].filter((status) => status === 'confirmed').length;
+    pendingProofs += [...latestByFile.values()].filter((status) => status === 'pending').length;
+  }
   const verifyEvents = allEvents(m, 'verify');
   const verifyPass = verifyEvents.reduce((n, e) => n + eventResultCount(e.detail.passed), 0);
   const verifyCaught = verifyEvents.reduce((n, e) => n + eventResultCount(e.detail.failed), 0);
@@ -526,21 +538,36 @@ function integrityAndIntegrationsSection(m: MatrixResult): string {
   const discoveryTable = bySource.size
     ? ['| Source | Items observed | Accepted as candidates | Rejected by the second-identifier rule | Duplicate URLs |', '|---|---|---|---|---|', ...[...bySource.entries()].map(([src, r]) => `| ${src} | ${r.observed} | ${r.accepted} | ${r.rejected} | ${r.duplicates} |`)].join('\n')
     : 'No discovery events were recorded in this batch (S21 not run, or no candidates found).';
-  const dsRequests = allEvents(m, 'signature');
-  const createdEvents = dsRequests.filter((e) => e.detail.status === 'created');
-  const dsCreated = createdEvents.length;
-  const dsSigned = dsRequests.filter((e) => e.detail.status === 'signed').length;
-  const dsDeclined = dsRequests.filter((e) => e.detail.status === 'declined').length;
-  const dsUnapproved = createdEvents.filter((e) => e.detail.recommender_confirmed !== true || e.detail.founder_approved !== true).length;
-  const artifactsFiled = m.attempts.reduce((n, a) => n + a.runs.reduce((k, r) => k + r.filed.length, 0), 0);
+  let dsCreated = 0;
+  let dsSigned = 0;
+  let dsDeclined = 0;
+  let dsRefused = 0;
+  let dsUnapproved = 0;
+  for (const attempt of m.attempts) {
+    const signatureEvents = (attempt.metrics?.events ?? []).filter((event) => event.kind === 'signature');
+    const createdEvents = signatureEvents.filter((event) => event.detail.status === 'created' && typeof event.detail.request_id === 'string');
+    dsCreated += createdEvents.length;
+    dsUnapproved += createdEvents.filter((event) => event.detail.recommender_confirmed !== true || event.detail.founder_approved !== true).length;
+    const finalByRequest = new Map<string, string>();
+    for (const event of signatureEvents) {
+      if (typeof event.detail.request_id === 'string') finalByRequest.set(event.detail.request_id, String(event.detail.status ?? ''));
+    }
+    dsSigned += [...finalByRequest.values()].filter((status) => status === 'signed').length;
+    dsDeclined += [...finalByRequest.values()].filter((status) => status === 'declined').length;
+    dsRefused += new Set(
+      signatureEvents
+        .filter((event) => event.detail.request_id == null && event.detail.status === 'declined')
+        .map((event) => String(event.detail.letter_id ?? 'unknown')),
+    ).size;
+  }
   const confirmationSource = m.backend === 'memory' ? 'synthetic fixture headers' : 'the configured block-header source';
   return [
     'Tamper-evidence. Every stampable filed artifact\'s SHA-256 is stamped with OpenTimestamps, and every approved public source page is archived with the Internet Archive. `exhibit verify` re-checks filed artifact bytes against their timestamp proofs; archive results are recorded separately.',
     '',
     '| Measure | Result |',
     '|---|---|',
-    `| Artifacts filed and stamped | ${timestamps.length} of ${artifactsFiled} |`,
-    `| Timestamp proofs confirmed by ${confirmationSource} (the rest pending, upgraded nightly) | ${confirmed} |`,
+    `| Artifacts with timestamp records | ${timestamped} |`,
+    `| Latest proof status: confirmed by ${confirmationSource} / pending | ${confirmed} / ${pendingProofs} |`,
     `| \`exhibit verify\`: untouched files passing / altered file caught | ${verifyPass} / ${verifyCaught} |`,
     `| Approved public sources archived | ${archived} of ${eventCount(m, 'archive')} |`,
     '',
@@ -550,7 +577,7 @@ function integrityAndIntegrationsSection(m: MatrixResult): string {
     '',
     `Numbers from official data. Figures drawn from structured APIs versus web pages: not tracked separately in this batch's events; see section 10.`,
     '',
-    `Letters. Dropbox Sign requests (test mode): ${dsCreated} created, ${dsSigned} signed, ${dsDeclined} declined, and ${dsUnapproved} created without both approvals (target 0, read back from the Dropbox Sign event log).`,
+    `Letters. Dropbox Sign requests (test mode): ${dsCreated} created, ${dsSigned} signed, ${dsDeclined} declined, ${dsRefused} refused before sending by the day-mode safety gate, and ${dsUnapproved} created without both approvals (target 0, read back from the Dropbox Sign event log).`,
   ].join('\n');
 }
 
