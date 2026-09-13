@@ -112,6 +112,16 @@ const OTHER_PARTY_RE =
 const OTHER_PARTY_ENGINEER_RE = /\b(?:engineers?|staff)\b/;
 
 /**
+ * The board, investors, directors or a titled "Chief of Staff" / "Staff <Title>" as the RECIPIENT
+ * of a grant or contract (K1): "the equity grant for the Board", "an employment agreement with our
+ * new Chief of Staff". Only the recipient position counts ("for/to/with" plus an optional article
+ * and "new"), so the founder's own grant that the board approved, that sits alongside investors,
+ * or that names her title ("as Chief of Staff", "for your board seat") stays hers (J1).
+ */
+const RECIPIENT_ROLE_RE =
+  /\b(?:for|to|with)\s+(?:the\s+|our\s+|a\s+|an\s+)?(?:new\s+)?(?:board(?:\s+(?:members?|observers?|directors?))?|investors?|directors?|Chief\s+of\s+Staff|Staff(?:\s+[A-Z][a-z]+){1,2})\b/i;
+
+/**
  * A pay-or-agreement anchor (H1/H2 fix): salary, base pay, pay, wages, compensation, an offer (or
  * offer letter), an employment/consulting agreement, a contract, an equity/stock/option grant,
  * shares, "paid", "will receive", "will earn". `payRecipient` only looks at the sentence(s)
@@ -162,8 +172,9 @@ function stripPleasantries(sentence: string): string {
  * a pay-or-agreement anchor (`ANCHOR_RE`) are considered, so an unrelated "you"/"your"/founder-name
  * mention elsewhere in the item never counts. Within those anchor sentences (pleasantries and
  * salutations stripped first), a third party always wins: if any anchor sentence attributes the
- * pay/contract/grant to someone else (a new hire, an employee, the sales team, investors, the
- * board, ...) the result is 'other', even when the same or another anchor sentence also addresses
+ * pay/contract/grant to someone else (a new hire, an employee, the sales team, or the board,
+ * investors or a Chief of Staff as its recipient) the result is 'other', even when the same or
+ * another anchor sentence also addresses
  * or names the founder. Otherwise 'founder' when some anchor sentence addresses or names her
  * ("you"/"your", "the founder", or her name); 'unknown' when no anchor sentence gives either
  * signal.
@@ -176,7 +187,7 @@ export function payRecipient(text: string, founderName?: string): PayRecipient {
   let sawFounder = false;
   for (const raw of sentences) {
     const s = stripPleasantries(raw);
-    if (OTHER_PARTY_RE.test(s) || OTHER_PARTY_ENGINEER_RE.test(s)) return 'other';
+    if (OTHER_PARTY_RE.test(s) || OTHER_PARTY_ENGINEER_RE.test(s) || RECIPIENT_ROLE_RE.test(s)) return 'other';
     if (FOUNDER_PRONOUN_RE.test(s) || mentionsFounderName(s, founderName)) sawFounder = true;
   }
   return sawFounder ? 'founder' : 'unknown';

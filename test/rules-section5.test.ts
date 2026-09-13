@@ -820,8 +820,22 @@ describe('J1: the board, investors or a "Staff" title near the founder\'s own gr
       'Hi Dara, our first hire signed an employment agreement; her start date is October 1. ARR hit $2M.',
       'Board approved the option grant pool for new employees.',
       'We approved equity grants for staff this quarter. ARR $2M.',
+      // K1: the board, investors or a titled Chief of Staff as the grant's or contract's recipient.
+      'Dara, you approved the equity grant for the Board.',
+      'Dara, you approved the equity grant for the board members.',
+      'Dara, you approved the equity grant for our investors.',
+      'Hi Dara, you approved the option grant for our Chief of Staff.',
+      'Hi Dara, you approved an equity grant for our Staff Engineer, Sam.',
+      'Hi Dara, your signature is needed on the option grant for our new Chief of Staff.',
+      'Dara, you signed an employment agreement with our new Chief of Staff; start date October 1.',
+      'Dara, you signed an offer letter for our new Chief of Staff; start date October 1.',
     ]) {
       expect(run(text)?.status, text).not.toBe('qualifying');
     }
+  });
+
+  it('keeps the founder\'s own contract for her board seat qualifying', () => {
+    const text = 'Dear Dara, your consulting agreement for your board seat at Acme begins on May 1.';
+    expect(run(text)?.status, text).toBe('qualifying');
   });
 });
