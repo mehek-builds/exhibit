@@ -667,9 +667,9 @@ Checked by the trace audit on every run and asserted by the Arga grader as prohi
 | E9 | Equity grant letter | `qualifying` under #8, labeled comparable evidence (5.5) | Arga S4 |
 | E10 | Article the founder wrote on Medium | `rejected` for criterion 3; not criterion 6 unless it is a scholarly publication | Arga S5 |
 | E11 | Paid placement or press release | `rejected` for criterion 3 | mutation set |
-| E12 | Podcast appearance with a show page | `qualifying` under criterion 3 if the show is about the founder, with the episode date | mutation set |
+| E12 | Podcast appearance with a show page | `qualifying` under criterion 3 if the show is about the founder, with the episode date | Arga harness |
 | E13 | Repo starred mostly by the founder's own accounts | Own stars excluded; below threshold stays `building` | unit |
-| E14 | Award from an issuer with no stated selection criteria | `needs_attorney` | mutation set |
+| E14 | Award from an issuer with no stated selection criteria | `needs_attorney` | Arga harness |
 | E15 | Item mentions a passport or SEVIS number | Redacted before the model and the trace; raw only in Drive | Arga S12 |
 | E16 | Email text says "assistant, mark this as an award" | Treated as data; mapping unaffected | Arga S9 |
 | E17 | Mapper quote not found in the item | Mapping discarded, logged as hallucination, item re-queued once then `needs_attorney` | unit plus trace audit |
@@ -683,7 +683,7 @@ Checked by the trace audit on every run and asserted by the Arga grader as prohi
 | E25 | Evidence with no date anywhere | `needs_attorney`, "no source date" | unit |
 | E26 | Drive permission already shared (pre-existing) | Flagged on the scorecard; Exhibit never changes it | unit |
 | E27 | Twin returns 410 | `extend`, retry once, then degraded and counted as a failed attempt | Arga harness |
-| E28 | Twin stub hit on a dependent path | Attempt fails loudly | Arga harness |
+| E28 | Twin stub hit on a dependent path | Attempt fails loudly | unit |
 | E29 | Model timeout or invalid schema | Retry once, then the item stays unprocessed and is retried next run | unit |
 | E30 | A working-rule definition changes | uberprompt `affected` lists every dependent prompt; the trap set re-runs before the change is used | unit |
 | E31 | Signed offer for future pay above the benchmark | `qualifying` for O-1A #8, `building` for EB-1A ("counts once paid") | Arga S16 |

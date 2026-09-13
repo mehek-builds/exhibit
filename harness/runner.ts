@@ -420,8 +420,10 @@ async function runSignBothApprovalsMutation(disabled: string[]): Promise<{ caugh
 export async function mutationCheck(opts: { attempts?: number } = {}): Promise<{ mutations: { name: string; disabled: string[]; scenario: string; killed: boolean; detail: string }[] }> {
   const attemptCount = opts.attempts ?? 1;
   const all = loadScenarios();
+  const s1 = all.find((s) => s.id === 'S1');
   const s2 = all.find((s) => s.id === 'S2');
   const s3 = all.find((s) => s.id === 'S3');
+  const s16 = all.find((s) => s.id === 'S16');
   const s20 = all.find((s) => s.id === 'S20');
   const s21 = all.find((s) => s.id === 'S21');
   const s23 = all.find((s) => s.id === 'S23');
@@ -449,6 +451,23 @@ export async function mutationCheck(opts: { attempts?: number } = {}): Promise<{
   await run('disable TX-verified-number (S20 must go red)', s20, ['TX-verified-number']);
   await run('disable TX-confirm-irreversible (S20 must go red)', s20, ['TX-confirm-irreversible']);
   await run('disable X-translation-opt-in (S24 must go red)', s24, ['X-translation-opt-in']);
+  // E11 (PRD 9): a rejected paid placement / press release must not slip through as qualifying #3
+  // press. S1's ground truth (gmail:m-pr) asserts it is a trap that must never qualify under #3;
+  // disabling both trap rules lets the heuristic model's default press_about mapping
+  // (C3-press-about, qualifying) take over, so S1 must go red.
+  await run('disable T-press-release + T-paid-placement (S1 must go red on the press-release trap)', s1, ['T-press-release', 'T-paid-placement']);
+  // E36 (PRD 9): an exhibition/display item counts only for EB-1A (vii), never O-1A. S16 asserts
+  // eb1a_criteria includes 'vii' and O-1A status is rejected for the exhibition candidate;
+  // disabling the rule removes that EB-1A-only mapping entirely (the heuristic model has no
+  // 'exhibition' case, so it falls through to R-not-evidence), so S16 must go red.
+  await run('disable X-exhibition-eb1a-only (S16 must go red)', s16, ['X-exhibition-eb1a-only']);
+  // E12 (podcast -> #3) and E14 (award with no stated selection criteria -> needs_attorney) are
+  // decided inside the offline heuristic model stand-in (src/models/heuristic.ts: C3-podcast,
+  // C1-no-selection-criteria), not in src/rules/explicit.ts, so neither rule is gated by
+  // RuleOptions.disabled and there is no mutation lever for them today (heuristic.ts is outside
+  // this file's ownership, so that gate can't be added here). Real coverage for both is added as
+  // focused checks in gradeS1 (harness/scenarios.ts) asserting the exact rule_id on gmail:m-pod
+  // and gmail:m-rising, which fail if either mapping regresses.
   void s23; // S23's own three recommenders don't isolate X-sign-both-approvals cleanly; see the bespoke check below.
 
   {

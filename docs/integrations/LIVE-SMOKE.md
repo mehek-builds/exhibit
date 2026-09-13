@@ -138,3 +138,30 @@ candidate carrying a citation count), so `src/integrations/registry.ts`'s `LIVE_
 `gdelt` and `semanticscholar` were left exactly as they already were — this re-run adds diagnostic
 detail (above) rather than a status change. `test/brief.test.ts`'s live-claim-gating test required no
 update for the same reason.
+
+## Keyless, no-account services: ORCID, OpenReview, SEC EDGAR, GDELT (2026-09-13, later same day)
+
+One request per service, respecting each service's own rate-limit guidance. Every request used
+`User-Agent: Exhibit hackathon smoke test (contact via github.com/mehek-builds/exhibit)` where the
+transport allows a custom header (`fetch`/`curl` direct, not through `FetchTransport`'s
+hardcoded UA for ORCID/GDELT below — see per-row note). No real private person's data was queried:
+ORCID used the public demo record `0000-0002-1825-0097` (ORCID's own published example, "Josiah
+Carberry", a fictional Brown University library test identity); OpenReview and EDGAR queries used
+public venue/company names only; GDELT queried a well-known public company name (`"Apple Inc"`).
+
+| service | endpoint | request | status | OK/FAIL | adapter parsed it? |
+|---|---|---|---|---|---|
+| ORCID public API | `GET pub.orcid.org/v3.0/{id}/works` | `0000-0002-1825-0097` (ORCID's own public demo record), no auth header | 200 | **OK** | **Yes** — response shape matches `src/integrations/orcid.ts`'s `OrcidWorksResponse` exactly: `group[].work-summary[0]` with `title.title.value`, `external-ids.external-id[]` (`external-id-type`/`external-id-value`), `put-code`. This record's entries happen to omit `journal-title` and `publication-date`, both of which the adapter already treats as optional (`?? undefined`, `isoFromParts` returns `null` on a missing `year.value`), so no adapter change is needed. Note: `orcid.ts`'s `getToken()` normally exchanges `clientId`/`clientSecret` for a bearer token first — this smoke request skipped that (no ORCID app credentials available keylessly) and called the public GET directly with no `Authorization` header, which ORCID's public API accepts for public records; the token-based path in the adapter itself was not exercised, only the response shape it expects to receive. |
+| OpenReview public API | `GET api2.openreview.net/notes?content.venueid=...` and `GET .../groups?id=...` | public venue id `ICLR.cc/2024/Conference` and group id `OpenReview.net`, no auth header | 403 | **FAIL** | Not applicable — no body to parse. First request (`/notes`) hit `{"name":"ChallengeRequiredError", "status":403, "details":{"challengeUrl":...}}` (an anti-bot browser challenge, not a normal auth error); the second (`/groups`) hit `{"name":"ForbiddenError","message":"User Guest is not reader of OpenReview.net"}`. Both are real, well-formed API JSON error bodies (not HTML), so connectivity to `api2.openreview.net` itself is fine — but OpenReview's API is not actually anonymous-readable for these paths from this sandbox's network, matching `src/integrations/openreview.ts`'s own existing design: it already requires `login()` with the founder's username/password before any read (never attempts an anonymous call). No code change needed; this confirms the adapter's assumption (login required) rather than contradicting it. |
+| SEC EDGAR full-text search | `GET efts.sec.gov/LATEST/search-index?q="Tesla"&forms=D` | company name `"Tesla"`, `User-Agent: Exhibit hackathon smoke test (contact via github.com/mehek-builds/exhibit)` | 403 | **FAIL** | Not applicable — SEC's edge returned its own HTML "Your Request Originates from an Undeclared Automated Tool" page (`sec.gov` fair-access bot wall), not JSON, regardless of the descriptive UA (tried via both `curl` and Node's `fetch`, byte-identical block page both times). `src/integrations/edgar.ts`'s own constructor-time UA check (`EMAIL_PATTERN` requiring a contact email in the UA) is satisfied by this string, so the adapter itself would build a compliant request — the block is this sandbox's outbound network being fingerprinted as automated traffic before the UA is even inspected, not a defect in `edgar.ts`. Not promoted to live; needs a re-run from a non-flagged network to actually confirm the Form-D XML parse (`issuerName`/`totalAmountSold`/`dateOfFirstSale`/`relatedPersonsList`) against a real hit. |
+| GDELT DOC 2.0 API | `GET api.gdeltproject.org/api/v2/doc/doc?query="Apple Inc"&mode=artlist&format=json` | company name `"Apple Inc"`, `startdatetime=20260901000000` | 429 | **FAIL (rate-limited)** | Not applicable — GDELT's own 429 body (`"Please limit requests to one every 5 seconds..."`) was returned on every attempt this session (three tries, spaced), most likely because this same sandbox IP had already spent GDELT's quota in the two earlier smoke passes recorded above in this file (2026-09-13, same day). No article body was ever returned, so `src/integrations/gdelt.ts`'s parser (`toItem`, `gdeltDateToIso`) was not exercised against a populated result in this pass either — it remains exactly as `LIVE_SMOKE_STATUS` already describes it (`live: true`, "ran only on an empty result"); this attempt adds no promotion. |
+
+### Adapter defects found (this pass)
+
+None. ORCID's shape assumption is now positively confirmed against a real response. OpenReview and
+EDGAR could not be exercised past their respective auth/bot walls from this sandbox's network — both
+failures are network/access-policy findings, not parser bugs, and neither adapter's parsing code was
+touched. GDELT stayed rate-limited for the whole window available in this pass, so its populated-result
+path is still unconfirmed. No `LIVE_SMOKE_STATUS` entries were added or changed for `orcid`,
+`openreview`, `edgar`, or `gdelt` as a result of this pass — none of the four met the "OK, adapter
+parsed it" bar required for that table.

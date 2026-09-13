@@ -126,6 +126,15 @@ function gradeS1(ctx: ScenarioContext): GradeCheck[] {
     }
   }
 
+  // E12/E14 (PRD 9): these mappings are decided inside the offline heuristic model stand-in
+  // (src/models/heuristic.ts), not by a RuleOptions-gated explicit rule, so mutationCheck()
+  // (harness/runner.ts) cannot disable them directly. These checks pin the exact rule_id so a
+  // regression in either mapping is still caught.
+  const podcast = candidateBySource(env, 'gmail:m-pod');
+  checks.push(chk('E12: podcast episode mapped via C3-podcast', podcast?.mapping.rule_id === 'C3-podcast', `expected C3-podcast, got ${podcast?.mapping.rule_id}`));
+  const noSelectionAward = candidateBySource(env, 'gmail:m-rising');
+  checks.push(chk('E14: award with no stated selection criteria mapped via C1-no-selection-criteria', noSelectionAward?.mapping.rule_id === 'C1-no-selection-criteria', `expected C1-no-selection-criteria, got ${noSelectionAward?.mapping.rule_id}`));
+
   const qualifying = env.ledger.candidates().filter((c) => c.status === 'qualifying');
   const needsAttorney = env.ledger.candidates().filter((c) => c.status === 'needs_attorney');
   checks.push(chk('exactly 14 qualifying candidates', qualifying.length === 14, `got ${qualifying.length}: ${qualifying.map((c) => c.key).join(', ')}`));
