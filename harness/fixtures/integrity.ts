@@ -41,10 +41,27 @@ export interface IntegrityFixtures {
   clearRateLimit(url: string): void;
 }
 
-export function createIntegrityFixtures(): IntegrityFixtures {
-  const chain = new Map<number, string>();
+export interface CreateIntegrityFixturesOptions {
+  /**
+   * Height assigned to the next newly-stamped commitment; defaults to 900_001. Mock mode
+   * (src/mock/deps.ts) passes `max(previously saved height) + 1` when restoring persisted state
+   * in a fresh process, so a new commitment in the restored process can never collide with a
+   * height a prior process already assigned and persisted.
+   */
+  startHeight?: number;
+  /**
+   * Known height -> merkle root pairs to seed the fake chain with, e.g. restored from a mock
+   * state file written by an earlier process. Lets `blockHeaders()` answer for commitments that
+   * were upgraded before this instance existed, even though this instance never assigned them a
+   * height itself.
+   */
+  seedChain?: Record<string, string>;
+}
+
+export function createIntegrityFixtures(opts: CreateIntegrityFixturesOptions = {}): IntegrityFixtures {
+  const chain = new Map<number, string>(Object.entries(opts.seedChain ?? {}).map(([h, root]) => [Number(h), root]));
   const commitmentHeight = new Map<string, number>();
-  let nextHeight = 900_001;
+  let nextHeight = opts.startHeight ?? 900_001;
   let upgraded = false;
   const jobs = new Map<string, string>();
   let jobSeq = 0;

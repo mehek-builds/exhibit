@@ -31,6 +31,7 @@ import { DISCOVERY_TIER1_FIXTURES } from './fixtures/discovery-tier1.js';
 import { DISCOVERY_TIER2A_FIXTURES } from './fixtures/discovery-tier2a.js';
 import { DARA_VOSS_ORCID, DARA_VOSS_OPENREVIEW_PROFILE, EDGAR_FIXTURES, OPENREVIEW_FIXTURES, OPENREVIEW_VENUES, ORCID_FIXTURES } from './fixtures/discovery-tier2b.js';
 import { createIntegrityFixtures } from './fixtures/integrity.js';
+import type { CreateIntegrityFixturesOptions, IntegrityFixtures } from './fixtures/integrity.js';
 import { VERIFIER_API_FIXTURES } from './fixtures/verifier-apis.js';
 import type { HarnessEnv, HarnessEnvOptions } from './env.js';
 
@@ -77,6 +78,13 @@ export function mergeFixtures(...maps: FixtureMap[]): FixtureMap {
 export interface FullStackOptions {
   /** Restrict the build to exactly these extension names; omit for every available extension. */
   only?: string[];
+  /**
+   * Forwarded to the `createIntegrityFixtures()` instance backing the `integrity` extension
+   * (harness/fixtures/integrity.ts). Mock mode (src/mock/deps.ts) uses this to continue the fake
+   * chain's height counter and pre-seed known roots when restoring persisted state in a fresh
+   * process.
+   */
+  integrityFixtures?: CreateIntegrityFixturesOptions;
 }
 
 function want(opts: FullStackOptions | undefined, name: FullStackExtensionName): boolean {
@@ -100,16 +108,28 @@ export function fullStackFeatures(opts?: FullStackOptions): FullStackFeatures {
  * for isolating which extension breaks a scenario; call `fullStackFeatures(opts)` separately for the
  * included/missing report.
  */
-export function fullStack(opts?: FullStackOptions): Pick<HarnessEnvOptions, 'extensions' | 'twilio' | 'structured'> {
-  const transport = new FixtureTransport(
-    mergeFixtures(DISCOVERY_TIER1_FIXTURES, DISCOVERY_TIER2A_FIXTURES, OPENREVIEW_FIXTURES, ORCID_FIXTURES, EDGAR_FIXTURES, VERIFIER_API_FIXTURES, createIntegrityFixtures().fixtures),
-  );
+export interface FullStackBuild extends Pick<HarnessEnvOptions, 'extensions' | 'twilio' | 'structured'> {
+  /**
+   * The single `IntegrityFixtures` instance backing the `integrity` extension in this build
+   * (undefined when `opts.only` excludes it). Exposed so a caller that needs to drive it directly
+   * across process invocations -- mock mode's simulated nightly upgrade job (src/mock/deps.ts),
+   * PRD E63 -- can call `markUpgraded()` / read `blockHeaders()` on the exact instance the
+   * extension's HTTP calls are actually answered by, rather than constructing a second,
+   * disconnected instance.
+   */
+  integrityFixtures?: IntegrityFixtures;
+}
 
-  // A second, independent integrity-fixtures instance backs the integrity extension itself so its
-  // stateful helpers (markUpgraded/blockHeaders) stay internally consistent; its `.fixtures` Proxy is
-  // also folded into the merged transport above so every calendar/archive URL resolves the same way
-  // whichever call site (integrity extension or a direct fetch) uses `transport`.
-  const integrityFixtures = createIntegrityFixtures();
+export function fullStack(opts?: FullStackOptions): FullStackBuild {
+  // One integrity-fixtures instance backs both the merged transport's calendar/archive responders
+  // and the `integrity` extension's `blockHeaders`, so `markUpgraded()` on the instance we return
+  // actually changes what the extension's HTTP calls see -- a single source of truth instead of two
+  // independent fake chains that happen to look alike.
+  const integrityFixtures = want(opts, 'integrity') ? createIntegrityFixtures(opts?.integrityFixtures) : undefined;
+
+  const transport = new FixtureTransport(
+    mergeFixtures(DISCOVERY_TIER1_FIXTURES, DISCOVERY_TIER2A_FIXTURES, OPENREVIEW_FIXTURES, ORCID_FIXTURES, EDGAR_FIXTURES, VERIFIER_API_FIXTURES, integrityFixtures?.fixtures ?? {}),
+  );
 
   const structured = createStructuredResearch({
     adapters: [
@@ -155,7 +175,7 @@ export function fullStack(opts?: FullStackOptions): Pick<HarnessEnvOptions, 'ext
         createIntegrityExtension({
           transport,
           archiveKeys: { accessKey: 'test-access', secretKey: 'test-secret' },
-          blockHeaders: integrityFixtures.blockHeaders,
+          blockHeaders: integrityFixtures!.blockHeaders,
         }),
       );
     }
@@ -186,5 +206,6 @@ export function fullStack(opts?: FullStackOptions): Pick<HarnessEnvOptions, 'ext
       ? (env: HarnessEnv) => new MemoryTwilio({ sender: 'whatsapp:+15550009999', now: () => env.clock.now(), record: (a, o, ac, d) => env.twins.recordOp(a, o, ac, d) })
       : undefined,
     structured,
+    integrityFixtures,
   };
 }

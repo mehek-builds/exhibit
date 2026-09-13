@@ -76,13 +76,20 @@ npx tsx src/cli.ts run --mock                    # one agent run: files exhibits
 npx tsx src/cli.ts serve --mock                   # Twilio webhook + scheduled run, on mock deps (prints the fake auth token and mock public URL)
 npx tsx src/cli.ts text --mock "approve 1"        # texts your local serve --mock as the synthetic founder, prints the reply
 npx tsx src/cli.ts run --mock --advance 7d        # advances the mock clock a week, so time-based stages (digest, nudges) fire
-npx tsx src/cli.ts verify --mock                  # re-checks the mock binder (fixture block headers, not Bitcoin mainnet)
+npx tsx src/cli.ts verify --mock                  # re-checks the mock binder against the synthetic fixture chain saved alongside it, not Bitcoin mainnet
 ```
 
 `watch --mock [--interval <s>] [--advance-per-tick <dur>]` repeats `run --mock` on a timer, saving
 state on every tick and on Ctrl-C. `--mock` and `--live` cannot be combined on any of `run`, `watch`,
 `serve` or `verify`. Use `--state <dir>` on any mock command to point at a different state directory
 than the default `.exhibit/mock/`.
+
+`run --mock` simulates the nightly Bitcoin-confirmation job (PRD E63) across invocations: the first
+run against a state directory only stamps proofs (`verify --mock` reports them pending), and every
+later `run --mock` against that same directory upgrades whatever an earlier run stamped before it
+runs -- so a second `run --mock` followed by `verify --mock` reports those proofs confirmed. This
+uses a synthetic fixture chain (fake heights, fake merkle roots) persisted in `mock-state.json`
+inside the state dir, not a real Bitcoin lookup; a byte-altered artifact still reports failed.
 
 ## How it proves itself
 

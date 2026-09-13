@@ -65,7 +65,7 @@ async function cmdServeMock(values: { interval?: string; port?: string; state?: 
     try {
       const summary = await runExhibit(deps);
       console.log(`${new Date().toISOString()} [${reason}] ${JSON.stringify(summary.summary)}`);
-      save();
+      await save();
     } catch (err) {
       console.error(`${new Date().toISOString()} [${reason}] run failed: ${String(err)}`);
     } finally {
@@ -131,7 +131,7 @@ async function cmdServeMock(values: { interval?: string; port?: string; state?: 
     console.log('Shutting down, saving state...');
     if (timer) clearTimeout(timer);
     void (async () => {
-      save();
+      await save();
       await webhook.close();
       await new Promise<void>((resolve) => outboxServer.close(() => resolve()));
       await close();

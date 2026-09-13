@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { createHarnessEnv } from '../../harness/env.js';
 import { fullYearSeed, DARA } from '../../harness/corpus.js';
 import { fullStack } from '../../harness/presets.js';
+import { decodeOts } from '../integrity/ots.js';
 import { MemoryTwins } from '../twins/memory.js';
 import type { MemoryTwinsSnapshot } from '../twins/memory.js';
 import { MemoryTwilio } from '../twins/twilio.js';
@@ -34,6 +35,12 @@ export interface MockState {
   nowIso: string;
   /** Wall-clock time (ms since epoch) this snapshot was written, so the next run can add real elapsed time. */
   savedAtMs: number;
+  /**
+   * The synthetic OpenTimestamps "chain" (PRD 12.3 S22), persisted so a later process can confirm
+   * proofs a previous process upgraded: fake Bitcoin block height (as a string key) -> fake merkle
+   * root hex. Merged across every save, never pruned. See harness/fixtures/integrity.ts.
+   */
+  chainRoots?: Record<string, string>;
 }
 
 export interface MockDepsResult {
@@ -41,13 +48,20 @@ export interface MockDepsResult {
   env: ReturnType<typeof createHarnessEnv>;
   profile: FounderProfile;
   features: FeatureReport[];
-  /** Persists twins + Twilio + clock state to stateDir. Call after every mock run. */
-  save(): void;
+  /**
+   * Persists twins + Twilio + clock + fake-chain state to stateDir. Call after every mock run.
+   * Async (reads the freshly-upgraded `.ots` proofs out of the mock Drive binder to collect new
+   * chain roots), but every existing caller (`exhibit run/watch/serve --mock`) already follows it
+   * with `await close()` in a `finally` before the process can exit, and the chain read here has no
+   * real I/O of its own (Map lookups only) -- so it always finishes flushing to disk well before
+   * that `close()` truly suspends. Prefer awaiting it directly in any new call site.
+   */
+  save(): Promise<void>;
   /** Restores the real global fetch and closes the ledger/gate. Always call in a `finally`. */
   close(): Promise<void>;
 }
 
-function statePath(stateDir: string): string {
+export function statePath(stateDir: string): string {
   return join(stateDir, 'mock-state.json');
 }
 
@@ -75,7 +89,8 @@ export function installFetchGuard(): () => void {
   };
 }
 
-function loadState(stateDir: string): MockState | null {
+/** Reads `stateDir`'s persisted mock state (twins, twilio, clock, fake-chain roots), or `null` before the first `save()`. */
+export function loadState(stateDir: string): MockState | null {
   const path = statePath(stateDir);
   if (!existsSync(path)) return null;
   return JSON.parse(readFileSync(path, 'utf8')) as MockState;
@@ -124,6 +139,15 @@ export async function buildMockDeps(opts: MockDepsOptions = {}): Promise<MockDep
     initialNow = opts.now ?? new Date();
   }
 
+  // Continue the fake OpenTimestamps chain's height counter past every height a previous process
+  // already assigned and persisted, and pre-seed the roots it recorded, so this process's
+  // blockHeaders() can answer for commitments upgraded before it existed (harness/fixtures/integrity.ts).
+  const existingChainRoots = existing?.chainRoots ?? {};
+  const existingHeights = Object.keys(existingChainRoots).map(Number).filter((n) => Number.isFinite(n));
+  const startHeight = existingHeights.length ? Math.max(...existingHeights) + 1 : undefined;
+
+  const stack = fullStack({ integrityFixtures: { startHeight, seedChain: existingChainRoots } });
+
   const env = createHarnessEnv({
     seed: fullYearSeed(),
     profile: DARA,
@@ -131,7 +155,7 @@ export async function buildMockDeps(opts: MockDepsOptions = {}): Promise<MockDep
     gate: 'mcp',
     release: 'mock',
     ledgerPath: ledgerPath(stateDir),
-    ...fullStack(),
+    ...stack,
   });
 
   if (existing) {
@@ -140,15 +164,45 @@ export async function buildMockDeps(opts: MockDepsOptions = {}): Promise<MockDep
     if (twilio instanceof MemoryTwilio) twilio.restore(existing.twilio);
   }
 
-  function save(): void {
+  // Simulate the nightly Bitcoin-confirmation job (PRD E63) deterministically: once a snapshot
+  // already exists (i.e. this is not the very first invocation against stateDir), flip every
+  // pending calendar poll to "complete" *before* the next run, so proofs stamped by an earlier
+  // invocation upgrade to `confirmed` during this one. The very first run only stamps (pending) --
+  // honest, since nothing has had a chance to "confirm" yet.
+  if (existing && stack.integrityFixtures) {
+    stack.integrityFixtures.markUpgraded();
+  }
+
+  /** Reads every upgraded (bitcoin-attested) `.ots` proof out of the mock Drive binder, height -> root. */
+  async function collectChainRoots(): Promise<Record<string, string>> {
+    const roots: Record<string, string> = {};
+    if (!stack.integrityFixtures) return roots;
+    const state = (env.twins as MemoryTwins).state();
+    for (const file of state.drive.files) {
+      if (!file.name.endsWith('.ots')) continue;
+      const content = (env.twins as MemoryTwins).driveContent(file.id);
+      if (!content) continue;
+      const proof = decodeOts(content);
+      for (const path of proof.paths) {
+        if (path.attestation.kind !== 'bitcoin') continue;
+        const root = await stack.integrityFixtures.blockHeaders(path.attestation.height);
+        if (root) roots[String(path.attestation.height)] = root;
+      }
+    }
+    return roots;
+  }
+
+  async function save(): Promise<void> {
     const twins = (env.twins as MemoryTwins).snapshot();
     const twilio = env.deps.apps.twilio;
     const twilioSnapshot = twilio instanceof MemoryTwilio ? twilio.snapshot() : { messages: [], seq: 0 };
+    const newChainRoots = await collectChainRoots();
     saveState(stateDir, {
       twins,
       twilio: twilioSnapshot,
       nowIso: env.clock.now().toISOString(),
       savedAtMs: Date.now(),
+      chainRoots: { ...existingChainRoots, ...newChainRoots },
     });
   }
 

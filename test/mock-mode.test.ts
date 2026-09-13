@@ -1,8 +1,9 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { MockState } from '../src/mock/deps.js';
 
 // End-to-end CLI checks for `--mock` mode (run/watch/serve/text/verify), all spawned with NO env
 // keys so a network-shaped failure here means the mock path leaked to something live.
@@ -120,4 +121,68 @@ describe('exhibit --mock mode', () => {
     expect(ignored.status).toBe(0);
     expect(ignored.stdout).toMatch(/Ignored:/);
   }, 120_000);
+
+  // The simulated nightly upgrade job (PRD E63) and the persisted fake chain (harness/fixtures/integrity.ts,
+  // src/mock/deps.ts): a proof stamped on one `run --mock` invocation upgrades on the next, and `verify --mock`
+  // can see that confirmation from a brand-new process because the fake chain is saved in mock-state.json.
+  it('a second run --mock confirms proofs the first stamped, and verify --mock catches tampering', () => {
+    const dir = freshStateDir();
+
+    // Run 1: stamps every stampable artifact. Nothing can have confirmed yet.
+    const run1 = runCli(['run', '--mock', '--state', dir], { timeoutMs: 120_000 });
+    expect(run1.status).toBe(0);
+
+    const verify1 = runCli(['verify', '--mock', '--state', dir]);
+    expect(verify1.status).toBe(0);
+    expect(verify1.stdout).toMatch(/confirmed:\s+0/);
+    expect(verify1.stdout).toMatch(/pending:\s+[1-9]/);
+    expect(verify1.stdout).toMatch(/failed:\s+0/);
+
+    // Run 2: buildMockDeps sees an existing snapshot, so it calls markUpgraded() before this run,
+    // upgrading every proof run 1 stamped, and saves their fake heights/roots to mock-state.json.
+    const run2 = runCli(['run', '--mock', '--state', dir], { timeoutMs: 120_000 });
+    expect(run2.status).toBe(0);
+
+    const stateAfterRun2 = JSON.parse(readFileSync(join(dir, 'mock-state.json'), 'utf8')) as MockState;
+    expect(Object.keys(stateAfterRun2.chainRoots ?? {}).length).toBeGreaterThan(0);
+
+    const verify2 = runCli(['verify', '--mock', '--state', dir]);
+    expect(verify2.status).toBe(0);
+    expect(verify2.stdout).toMatch(/confirmed:\s+[1-9]/);
+    expect(verify2.stdout).toMatch(/pending:\s+0\b/);
+    expect(verify2.stdout).toMatch(/failed:\s+0/);
+    const confirmedAfterRun2 = Number(verify2.stdout.match(/confirmed:\s+(\d+)/)?.[1]);
+
+    // Tamper with one filed artifact's bytes directly in the saved mock state (the Drive twin's
+    // snapshot stores each file's content as base64 -- see MemoryTwins.snapshot()/restore()).
+    const state = JSON.parse(readFileSync(join(dir, 'mock-state.json'), 'utf8')) as MockState;
+    const stampableRoles = new Set(['original', 'render', 'member', 'signed_letter', 'translation']);
+    const target = state.twins.drive.find((f) => stampableRoles.has(f.meta.appProperties?.role ?? ''));
+    expect(target).toBeTruthy();
+    const targetName = target!.meta.name;
+    const original = Buffer.from(target!.content, 'base64');
+    const tampered = Buffer.from(original);
+    tampered[0] = (tampered[0]! + 1) % 256;
+    target!.content = tampered.toString('base64');
+    writeFileSync(join(dir, 'mock-state.json'), `${JSON.stringify(state, null, 2)}\n`);
+
+    const verifyTampered = runCli(['verify', '--mock', '--state', dir]);
+    expect(verifyTampered.status).toBe(1);
+    expect(verifyTampered.stdout).toMatch(/FAILED/);
+    expect(verifyTampered.stdout).toContain(targetName);
+
+    // Restore the untampered bytes before the third run so filing/stamping stays consistent.
+    target!.content = original.toString('base64');
+    writeFileSync(join(dir, 'mock-state.json'), `${JSON.stringify(state, null, 2)}\n`);
+
+    // Run 3: no new data, so nothing new to stamp; everything already confirmed stays confirmed with
+    // no duplicate stamps (the `ots:<fileId>` kv guard in src/integrity/extension.ts `stampFile`).
+    const run3 = runCli(['run', '--mock', '--state', dir], { timeoutMs: 120_000 });
+    expect(run3.status).toBe(0);
+
+    const verify3 = runCli(['verify', '--mock', '--state', dir]);
+    expect(verify3.status).toBe(0);
+    expect(verify3.stdout).toMatch(/failed:\s+0/);
+    expect(verify3.stdout).toMatch(new RegExp(`confirmed:\\s+${confirmedAfterRun2}\\b`));
+  }, 240_000);
 });

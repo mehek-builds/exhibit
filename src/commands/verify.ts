@@ -9,8 +9,8 @@ import { verifyBinder } from '../integrity/verify.js';
 import type { VerifyBinderResult } from '../integrity/verify.js';
 import { decodeOts } from '../integrity/ots.js';
 import { verifyProof } from '../integrity/opentimestamps.js';
-import { buildMockDeps } from '../mock/deps.js';
-import { createIntegrityFixtures } from '../../harness/fixtures/integrity.js';
+import { buildMockDeps, loadState } from '../mock/deps.js';
+import type { MockState } from '../mock/deps.js';
 
 // `exhibit verify` (PRD 6.6, 6.14, E64). Live dependencies come from src/config.ts;
 // tests can inject the same interface directly.
@@ -45,15 +45,19 @@ function liveBlockHeaders(): (height: number) => Promise<string | null> {
   };
 }
 
-/** `verify --mock`: the same mock binder run/watch/serve --mock build, checked with fixture block
- * headers (never markUpgraded'd in mock mode, so every attestation reads as pending, not failed --
- * matching how mock mode never confirms a Bitcoin timestamp). */
+/** `verify --mock`: the same mock binder `run/watch/serve --mock` build, checked against the
+ * synthetic fixture chain saved in the mock state dir (mock-state.json's `chainRoots`), not Bitcoin
+ * mainnet. A proof upgraded by an earlier `run --mock` invocation (its height/root saved there)
+ * reports confirmed; one never upgraded reports pending; a byte-altered artifact reports failed. */
 async function mockVerifyDeps(stateDir?: string): Promise<VerifyCliDeps> {
   const { deps, close } = await buildMockDeps({ stateDir });
   const raw = deps.ledger.get('binder');
   if (!raw) throw new Error('exhibit verify --mock: no binder found in the mock ledger (has `exhibit run --mock` run yet?)');
   const binderRoot = (JSON.parse(raw) as { root: string }).root;
-  const { blockHeaders } = createIntegrityFixtures();
+  const resolvedStateDir = stateDir ?? join(process.cwd(), '.exhibit', 'mock');
+  const state = loadState(resolvedStateDir) as MockState | null;
+  const chainRoots = state?.chainRoots ?? {};
+  const blockHeaders = async (height: number) => chainRoots[String(height)] ?? null;
   return { drive: deps.apps.drive, ledger: deps.ledger, binderRoot, blockHeaders, close };
 }
 
@@ -157,7 +161,7 @@ export async function cmdVerify(argv: string[], injected?: VerifyCliDeps): Promi
     if (injected) throw new Error('cmdVerify: --mock cannot be combined with injected live dependencies.');
     const deps = await mockVerifyDeps(values.state);
     try {
-      console.log('MOCK MODE: verifying the mock binder (fixture block headers, no Bitcoin mainnet).');
+      console.log('MOCK MODE: verifying the mock binder against the synthetic fixture chain saved in the mock state dir, not Bitcoin mainnet.');
       const result = await verifyBinder({ drive: deps.drive, ledger: deps.ledger, binderRoot: deps.binderRoot, blockHeaders: deps.blockHeaders });
       console.log(renderTable(result));
       return result.failed.length > 0 ? 1 : 0;

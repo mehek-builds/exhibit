@@ -348,7 +348,7 @@ async function cmdRun(args: string[]): Promise<void> {
       }
       const summary = await runExhibit(deps);
       printMockRunSummary(summary);
-      save();
+      await save();
       if (summary.outcome !== 'ok') process.exitCode = 1;
     } finally {
       await close();
@@ -409,12 +409,12 @@ async function cmdWatch(args: string[]): Promise<void> {
         if (advancePerTickMs) env.clock.advance(advancePerTickMs);
         const summary = await runExhibit(deps);
         console.log(`${new Date().toISOString()} ${JSON.stringify(summary.summary)}`);
-        save();
+        await save();
         if (stopped) break;
         await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
       }
     } finally {
-      save();
+      await save();
       await close();
     }
     return;
