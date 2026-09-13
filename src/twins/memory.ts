@@ -24,6 +24,21 @@ export interface TwinSeed {
   linkedin: { posts: LinkedinPost[]; followers: number } | null;
 }
 
+/** JSON-serializable form of MemoryTwins's internal state, for mock-mode persistence across CLI invocations. */
+export interface MemoryTwinsSnapshot {
+  gmail: GmailMessage[];
+  calendar: CalendarEvent[];
+  github: TwinSeed['github'];
+  linkedin: TwinSeed['linkedin'];
+  drive: { id: string; meta: DriveFile; content: string; permissions: DrivePermission[] }[];
+  docs: { id: string; title: string; text: string }[];
+  sheets: { id: string; title: string; rows: string[][]; edits: { actor: 'agent' | 'admin'; row: number; col: number; value: string }[] }[];
+  ops: TwinOp[];
+  stubHits: string[];
+  seq: number;
+  ids: number;
+}
+
 export interface TwinOp {
   seq: number;
   /** The seven app twins, 'arga' for provisioning calls, and any fake added beside them (twilio, dropboxsign, ...). */
@@ -196,6 +211,48 @@ export class MemoryTwins {
       ops: clone(this.ops),
       stubHits: [...this.stubHits],
     };
+  }
+
+  /**
+   * Full internal state as a JSON-serializable snapshot (mock-mode persistence, src/mock/deps.ts):
+   * unlike `state()`, drive content is base64 (not a Buffer) so `JSON.stringify` round-trips it.
+   */
+  snapshot(): MemoryTwinsSnapshot {
+    return {
+      gmail: clone(this.gmail),
+      calendar: clone(this.calendar),
+      github: clone(this.github),
+      linkedin: clone(this.linkedin),
+      drive: [...this.drive.entries()].map(([id, f]) => ({
+        id,
+        meta: clone(f.meta),
+        content: Buffer.from(f.content).toString('base64'),
+        permissions: clone(f.permissions),
+      })),
+      docs: [...this.docs.entries()].map(([id, d]) => ({ id, ...clone(d) })),
+      sheets: [...this.sheets.entries()].map(([id, s]) => ({ id, ...clone(s) })),
+      ops: clone(this.ops),
+      stubHits: [...this.stubHits],
+      seq: this.seq,
+      ids: this.ids,
+    };
+  }
+
+  /** Restores state written by `snapshot()`; replaces the seed-derived state entirely. */
+  restore(snapshot: MemoryTwinsSnapshot): void {
+    this.gmail = clone(snapshot.gmail);
+    this.calendar = clone(snapshot.calendar);
+    this.github = clone(snapshot.github);
+    this.linkedin = clone(snapshot.linkedin);
+    this.drive = new Map(
+      snapshot.drive.map((f) => [f.id, { meta: clone(f.meta), content: Buffer.from(f.content, 'base64'), permissions: clone(f.permissions) }]),
+    );
+    this.docs = new Map(snapshot.docs.map((d) => [d.id, { title: d.title, text: d.text }]));
+    this.sheets = new Map(snapshot.sheets.map((s) => [s.id, { title: s.title, rows: clone(s.rows), edits: clone(s.edits) }]));
+    this.ops = clone(snapshot.ops);
+    this.stubHits = [...snapshot.stubHits];
+    this.seq = snapshot.seq;
+    this.ids = snapshot.ids;
   }
 
   drivePath(fileId: string): string {

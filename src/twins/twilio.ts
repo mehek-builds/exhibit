@@ -68,4 +68,20 @@ export class MemoryTwilio implements TwilioApi {
   state(): { messages: TextMessage[] } {
     return { messages: this.messages.map((m) => ({ ...m })) };
   }
+
+  /** JSON-serializable snapshot for mock-mode persistence across CLI invocations (src/mock/deps.ts). */
+  snapshot(): MemoryTwilioSnapshot {
+    return { messages: this.messages.map((m) => ({ ...m })), seq: this.seq };
+  }
+
+  /** Restores state written by `snapshot()`. */
+  restore(snapshot: MemoryTwilioSnapshot): void {
+    this.messages = snapshot.messages.map((m) => ({ ...m }));
+    this.seq = snapshot.seq;
+  }
+}
+
+export interface MemoryTwilioSnapshot {
+  messages: TextMessage[];
+  seq: number;
 }

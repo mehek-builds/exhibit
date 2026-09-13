@@ -159,10 +159,37 @@ expected proof that tampering is detected. The demo's timestamp chain is synthet
 same export, so this is an internal consistency check; live `verify` checks Bitcoin attestations
 against block headers fetched independently from Blockstream.
 
+### Run the whole flow on mock data
+
+`--mock` runs the real product commands end to end against the same synthetic founder, in-memory
+apps and fixtures the tests use, with no API keys and no network. State is saved in `.exhibit/mock/`
+(gitignored) between commands, so each command builds on the last.
+
+```bash
+npx tsx src/cli.ts flow                          # every PRD stage in one go; prints PASS or FAIL per stage, exits 1 on any failure
+npx tsx src/cli.ts run --mock                    # one agent run: files exhibits, queues figures, drafts letters, updates the scorecard
+npx tsx src/cli.ts run --mock                    # a second run files nothing new and confirms the timestamps the first run stamped
+npx tsx src/cli.ts verify --mock                 # re-checks the mock binder; a byte-altered file fails by name
+npx tsx src/cli.ts serve --mock --port 8787      # the real Twilio webhook on mock data (prints a clearly fake token)
+npx tsx src/cli.ts text --mock "status"          # in another terminal: text the agent as the founder and print its reply
+npx tsx src/cli.ts text --mock "approve 1"       # replies "Approved: FIG-001." and the approval is saved
+npx tsx src/cli.ts run --mock --advance 7d       # move the mock clock so time-based stages (Sunday digest, nudges) fire
+```
+
+`exhibit flow` walks setup, intake and redaction, classification, discovery, filing, corroboration
+and the review Sheet, notifications, Sheet and text decisions through the real webhook, letters,
+signing, translation, integrity and tamper detection, the Sunday digest and stop, freshness,
+idempotency and the safety audit. Output goes to `out/flow/`. See [docs/FLOW.md](docs/FLOW.md).
+
+Texts from any number other than the synthetic founder's are ignored. `watch --mock` repeats
+`run --mock` on a timer. Use `--state <dir>` on any mock command for a separate state directory.
+Everything here is synthetic: in-memory apps, recorded fixtures and a fake timestamp chain, not live
+services.
+
 ### Run the tests and the graded evaluation
 
 ```bash
-npm run check                              # typecheck + 974 unit tests + the rule check
+npm run check                              # typecheck + the full unit test suite + the rule check
 npx tsx src/cli.ts eval --attempts 3       # every scenario, 3 graded attempts each (about 15s)
 npx tsx src/cli.ts mutate                  # disables key rules one at a time; each must turn a scenario red
 npx tsx src/cli.ts prove-rules             # re-runs the scenarios behind any changed rule fragment
