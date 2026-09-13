@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyExplicitRules, enforceInvariants, mapping } from '../src/rules/explicit.js';
+import { applyExplicitRules, enforceInvariants, isPersonalPay, mapping } from '../src/rules/explicit.js';
 import { buildScorecard } from '../src/binder/scorecard.js';
 import { Ledger } from '../src/ledger.js';
 import { mapping as mkMapping } from '../src/rules/explicit.js';
@@ -74,6 +74,79 @@ describe('T-revenue-not-pay: structural personal-pay phrasings exempt the trap',
       expect(m!.status).toBe('rejected');
     });
   }
+});
+
+// Table-driven expectations for isPersonalPay itself (PRD 5.1 #8, 5.5 T-revenue-not-pay).
+// Clause-scoped: split on sentence/clause boundaries, each evaluated independently so a negation
+// in one clause never cancels a genuine pay statement in another, but does cancel a pay term it
+// directly governs within its own clause.
+describe('isPersonalPay: table-driven expectation matrix', () => {
+  const mustBePay: Array<[string, string]> = [
+    ['salary with amount, revenue separate clause', 'Salary: $210,000 per year. Company revenue was $4M ARR this quarter.'],
+    ['revenue clause then base salary clause', 'Revenue grew to $3M ARR. Base salary $210,000.'],
+    ['annual compensation with amount', 'Annual compensation: $180k. Revenue was $2M this quarter.'],
+    ['offer with base and equity amount', 'Offer: $190,000 base plus 0.5% equity. Revenue was $2M this quarter.'],
+    ['signed offer letter', 'signed offer letter'],
+    ['W-2', 'W-2'],
+    ['pay stub', 'pay stub'],
+    ['equity grant issued to the person', 'You were issued an equity grant of 50,000 shares.'],
+    ['salary tied to ARR (existing rules.test.ts case)', 'Your salary is set based on our current ARR figures.'],
+    // Regression cases from re-review N2: negation elsewhere on the line must not blank a real pay
+    // statement in its own clause.
+    ['negation in a later clause does not cancel an earlier salary clause', 'Salary: $210,000. We do not offer stock options at this stage. Revenue $4M ARR.'],
+    ['negation in a middle clause does not cancel an offer-letter clause', 'Offer letter. Base salary $190,000, no equity. ARR $3M.'],
+  ];
+  for (const [label, text] of mustBePay) {
+    it(`is pay: ${label}`, () => {
+      expect(isPersonalPay(text)).toBe(true);
+    });
+  }
+
+  const mustNotBePay: Array<[string, string]> = [
+    ['revenue clause, unrelated negated-equity clause', "Revenue was $2M this quarter. Separately, we don't offer stock options to early hires."],
+    ['stock market mention', 'The stock market had a rough week.'],
+    ['revenue per share', 'Revenue per share was $0.40.'],
+    ['no salary offered', 'No salary is offered at this stage.'],
+    ['generic customer offer', 'We offer free onboarding to every customer.'],
+    ['offer with cadence but no amount, no compensation cue', 'We offer annual plans; revenue was $2M this quarter.'],
+    // Regression cases from re-review N2: over-exemption. A pay-shaped word that isn't about a
+    // person's compensation must not exempt revenue from T-revenue-not-pay.
+    ['compensation committee, not personal pay', 'Our compensation committee met; revenue was $4M ARR.'],
+    ['offer aimed at customers with an amount', 'We offered customers a $99 plan; revenue grew to $2M.'],
+  ];
+  for (const [label, text] of mustNotBePay) {
+    it(`is not pay: ${label}`, () => {
+      expect(isPersonalPay(text)).toBe(false);
+    });
+  }
+
+  // Adversarial cases of our own.
+  describe('adversarial cases', () => {
+    it('is not pay: revenue compensation from a business deal (compensation used loosely, not a person\'s pay)', () => {
+      // Judgment call: "compensation" here means proceeds/payment for the deal, not a person's
+      // remuneration. We exclude "revenue compensation" specifically (payWordC has a negative
+      // lookbehind for "revenue "); a differently-worded business-compensation phrase could still
+      // slip through -- this is a known limitation of a keyword-based check, not a regression.
+      expect(isPersonalPay('Revenue compensation from the partner deal was $1M.')).toBe(false);
+    });
+
+    it('is NOT pay: market salary benchmarks, surveys and data describe the field, not this person', () => {
+      // A benchmark paired with a revenue line must not exempt T-revenue-not-pay (constraint 4).
+      for (const s of ['Salary benchmarks for the market are $150k.', 'The 2026 salary survey puts the median at $140k.', 'Market salary for this role is $160k.', 'Compensation data for engineers: $150k median.']) {
+        expect(isPersonalPay(s), s).toBe(false);
+      }
+      const it_ = redacted({ app: 'gmail', id: 'm-benchmark-revenue', title: 'Market note', text: 'Salary benchmarks for the market are $150k. Revenue was $2M this quarter.' });
+      expect(applyExplicitRules(it_, cls({ kind: 'remuneration' }), PROFILE)!.rule_id).toBe('T-revenue-not-pay');
+    });
+
+    it('is pay: equity offered directly to the founder with an explicit percentage', () => {
+      expect(isPersonalPay('We offered her 0.5% equity as part of the package.')).toBe(true);
+    });
+
+    it('is not pay: a customer-facing compensation plan mention', () => {
+      expect(isPersonalPay('Our new compensation plan for customers launches next quarter.')).toBe(false);
+    });
+  });
 });
 
 describe('T-revenue-not-pay backstop in enforceInvariants', () => {

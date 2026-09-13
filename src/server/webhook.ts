@@ -112,6 +112,7 @@ function respondSafely(res: ServerResponse, status: number, contentType: string,
 
 export function startWebhookServer(opts: WebhookOptions): WebhookServer {
   const seenSids = new Map<string, number>();
+  const inFlightSids = new Set<string>();
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     // A client that disconnects mid-body raises 'error'/'aborted' on the request (and sometimes
     // 'error' on the response once it tries to write back). With no listener, Node's default
@@ -120,7 +121,7 @@ export function startWebhookServer(opts: WebhookOptions): WebhookServer {
     req.on('error', () => {});
     req.on('aborted', () => {});
     res.on('error', () => {});
-    handle(req, res, opts, seenSids).catch(() => {
+    handle(req, res, opts, seenSids, inFlightSids).catch(() => {
       respondSafely(res, 500, 'text/plain', 'internal error');
     });
   });
@@ -134,7 +135,13 @@ export function startWebhookServer(opts: WebhookOptions): WebhookServer {
   };
 }
 
-async function handle(req: IncomingMessage, res: ServerResponse, opts: WebhookOptions, seenSids: Map<string, number>): Promise<void> {
+async function handle(
+  req: IncomingMessage,
+  res: ServerResponse,
+  opts: WebhookOptions,
+  seenSids: Map<string, number>,
+  inFlightSids: Set<string>,
+): Promise<void> {
   if (req.method !== 'POST') {
     respondSafely(res, 404, 'text/plain', 'not found');
     return;
@@ -161,17 +168,25 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: WebhookOp
   }
   const sid = params.MessageSid ?? params.SmsSid ?? '';
   const now = Date.now();
-  const isReplay = sid !== '' && seenSids.has(sid);
-  if (sid !== '') {
-    if (!isReplay) seenSids.set(sid, now);
-    pruneDedupe(seenSids, now);
+  const alreadyDone = sid !== '' && seenSids.has(sid);
+  const alreadyInFlight = sid !== '' && inFlightSids.has(sid);
+  if (alreadyDone || alreadyInFlight) {
+    // Already processed (or a concurrent delivery of the same sid is still processing): no-op ack.
+    respondSafely(res, 200, 'text/xml', EMPTY_TWIML);
+    return;
   }
-  if (!isReplay) {
-    try {
-      await opts.onMessage(toTextMessage(params));
-    } catch {
-      // The webhook must still ack Twilio; failures are handled by the notifier/text channel, not here.
-    }
+  if (sid !== '') inFlightSids.add(sid);
+  try {
+    await opts.onMessage(toTextMessage(params));
+  } catch (err) {
+    if (sid !== '') inFlightSids.delete(sid);
+    // Do not ack: Twilio must see a failure so it retries and the message isn't lost.
+    throw err;
+  }
+  if (sid !== '') {
+    inFlightSids.delete(sid);
+    seenSids.set(sid, now);
+    pruneDedupe(seenSids, now);
   }
   respondSafely(res, 200, 'text/xml', EMPTY_TWIML);
 }

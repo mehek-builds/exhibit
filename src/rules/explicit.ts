@@ -31,38 +31,84 @@ export const PATTERNS = {
   performingArtsSuccess: /\b(box office|ticket sales|gate receipts|record sales|streaming (?:numbers|figures))\b[^\n]{0,90}\b(commercial success|performing arts)\b|\b(commercial success)\b[^\n]{0,90}\b(performing arts|box office|ticket sales|record sales)\b/i,
   revenue: /\b(revenue|MRR|ARR|gross sales)\b/i,
   pay: /\b(salary|base pay|compensation|stock|equity|shares|SAFE|investment)\b/i,
-  /** A dollar/monetary amount: "$210,000", "180k", "$4M", "0.5%". */
-  amount: /(\$\s?\d[\d,]*(?:\.\d+)?\s*(?:k|K|m|M|million|thousand)?\b|\b\d[\d,]*(?:\.\d+)?\s*(?:k|K)\b|\b\d+(?:\.\d+)?\s?%)/,
-  /** A pay word that means personal pay on its own: salary, base pay/salary, compensation. */
-  payWord: /\b(salary|base (?:pay|salary)|compensation)\b/i,
-  /** "offer" is only pay when a money amount follows it in the same clause ("Offer: $190,000 base"). */
-  offerAmount: /\boffer(?:ed|s)?\b[^.;\n]{0,40}?(?:\$\s?\d|\b\d[\d,]*(?:\.\d+)?\s*[kK]\b)/i,
+  /**
+   * A pay word that means personal pay on its own: salary, base pay/salary, compensation.
+   * Excludes "compensation committee" and "compensation plan" (customer/product plans, board
+   * committees -- not a person's pay), and "revenue compensation" ("compensation" used loosely
+   * for business proceeds, e.g. "Revenue compensation from the partner deal"). Also excludes
+   * market-level data ("salary benchmarks", "salary survey", "compensation data"): that is a
+   * benchmark for the field, not this person's pay, and must never exempt the revenue trap.
+   */
+  payWordC: /\b(?<!revenue\s)(?<!market\s)(?:base\s+(?:pay|salary)|salary|compensation)\b(?!\s+(?:committee|plan|benchmarks?|surveys?|data|ranges?|bands?|percentiles?|reports?|trends?))/i,
+  /** "offer"/"offered"/"offers", matched separately so we can check what governs it. */
+  offerWord: /\boffer(?:ed|s)?\b/i,
+  /** "offer" aimed at customers/users/clients is never personal pay, regardless of nearby amounts. */
+  offerToCustomer: /\boffer(?:ed|s)?\b[^.;\n]{0,40}\b(?:customers?|users?|clients?)\b/i,
+  /**
+   * A compensation cue near "offer": salary/base wording, or a dollar amount tied to a role
+   * ("Offer: $190,000 base"), or an annual-rate/equity-percent figure ("$190,000 per year",
+   * "0.5% equity"). A bare "annual"/"per year" with no amount (e.g. "we offer annual plans") is
+   * not enough -- that is a product-plan cadence, not compensation.
+   */
+  offerCompCue:
+    /\boffer(?:ed|s)?\b[^.;\n]{0,40}(?:\bsalary\b|\bbase\b|\$\s?\d|\d+(?:\.\d+)?\s?%)|(?:\$\s?\d[\d,]*(?:\.\d+)?\s*(?:k|K|m|M)?|\d+(?:\.\d+)?\s?%)[^.;\n]{0,20}\b(?:per\s+year|annual(?:ly)?|yr)\b/i,
   /** Structural evidence of genuine personal compensation: an offer letter/contract, or a W-2/pay stub. */
   offerDocs: /\b(offer letter|employment (?:agreement|offer|contract)|signed offer|W-2|W2|pay ?stub)\b/i,
-  /** Equity or stock actually granted/awarded to the person, as distinct from a generic mention of "equity" or "stock". */
+  /** Equity or stock actually granted/awarded/issued to a person, as distinct from a generic mention of "equity" or "stock". */
   equityGrant: /\b(equity grant|stock grant|option grant|(?:granted|awarded|issued|vesting)\b[^\n]{0,40}\b(?:shares|equity|stock options?|options)\b)\b/i,
-  /** A pay-related word negated or made generic ("we don't offer stock options", "no salary", "stock market", "revenue per share"). */
-  negatedOrGenericPay:
-    /\b(?:don'?t|does\s?n'?t|doesn'?t|do\s?n'?t|no|not|never|isn'?t|aren'?t)\b[^\n]{0,30}\b(?:offer|pay|salary|compensation|equity|stock options?)\b|\b(?:stock market|stock index|revenue per share)\b/i,
+  /** A negation word ("don't", "no", "never", ...), used to check whether it governs a nearby pay term. */
+  negation: /\b(?:don'?t|does\s?n'?t|doesn'?t|do\s?n'?t|no|not|never|isn'?t|aren'?t)\b/i,
 } as const;
+
+/** Split text into clauses on sentence/clause boundaries, without breaking decimals like "$0.40". */
+function splitClauses(text: string): string[] {
+  return text
+    .split(/\n|(?<!\d)[.!?](?!\d)|;/)
+    .map((c) => c.trim())
+    .filter(Boolean);
+}
+
+/** True when a negation word governs the term at `index` in `clause` (within the last few words before it). */
+function isNegatedBefore(clause: string, index: number): boolean {
+  const before = clause.slice(0, index).trim();
+  const lastWords = before.split(/\s+/).slice(-5).join(' ');
+  return PATTERNS.negation.test(lastWords);
+}
+
+/**
+ * Whether a single clause states genuine personal pay: a pay word (salary/base/compensation) not
+ * negated and not a committee/plan/revenue-compensation false friend, an "offer" with a real
+ * compensation cue that isn't aimed at customers, an offer letter/contract/W-2/pay stub, or an
+ * equity grant issued to a person. Judgment call: `equityGrant` doesn't separately exclude grants
+ * offered to customers -- in practice "granted ... shares" to a non-person is not a phrasing we've
+ * seen, so it's left unguarded rather than adding an untested exclusion.
+ */
+function clauseIsPersonalPay(clause: string): boolean {
+  if (PATTERNS.offerDocs.test(clause)) return true;
+  if (PATTERNS.equityGrant.test(clause)) return true;
+
+  const payMatch = PATTERNS.payWordC.exec(clause);
+  if (payMatch && !isNegatedBefore(clause, payMatch.index)) return true;
+
+  if (PATTERNS.offerCompCue.test(clause) && !PATTERNS.offerToCustomer.test(clause)) {
+    const offerMatch = PATTERNS.offerWord.exec(clause);
+    if (offerMatch && !isNegatedBefore(clause, offerMatch.index)) return true;
+  }
+
+  return false;
+}
 
 /**
  * A genuine personal-compensation statement: an amount next to a pay word or "offer" (e.g. "Base
  * salary $210,000", "Offer: $190,000 base plus 0.5% equity"), an offer letter/contract/W-2/pay
  * stub, or an equity grant to the person. Structural cues, not pronouns, so it works whether the
- * text says "her salary" or "Salary: $210,000". Negated or generic mentions ("we don't offer
- * stock options", "stock market") never count, checked per line so a genuine statement elsewhere
- * in the item still counts.
+ * text says "her salary" or "Salary: $210,000". Text is split into clauses (sentences, plus `;`)
+ * and each is evaluated on its own, so a negation in one clause ("no equity") never cancels a pay
+ * statement in another ("Base salary $190,000, no equity" -- still pay), while a negation next to
+ * the pay term within the same clause does cancel it ("No salary is offered at this stage").
  */
 export function isPersonalPay(text: string): boolean {
-  for (const line of text.split('\n')) {
-    if (PATTERNS.negatedOrGenericPay.test(line)) continue;
-    if (PATTERNS.offerDocs.test(line)) return true;
-    if (PATTERNS.equityGrant.test(line)) return true;
-    if (PATTERNS.payWord.test(line)) return true;
-    if (PATTERNS.offerAmount.test(line)) return true;
-  }
-  return false;
+  return splitClauses(text).some(clauseIsPersonalPay);
 }
 
 function enabled(opts: RuleOptions | undefined, id: string): boolean {

@@ -249,7 +249,7 @@ export class AnthropicCommandParser implements CommandParser {
     }
 
     for (const c of deduped) {
-      if (!isGrounded(c, text)) {
+      if (!isGrounded(c, text, ctx.now)) {
         return [unclear(`I wasn't able to confirm everything in "${text.trim()}". Could you rephrase it as separate short commands (e.g. "approve 1", "deny 2 <reason>", "pause until <date>")?`)];
       }
     }
@@ -258,33 +258,58 @@ export class AnthropicCommandParser implements CommandParser {
   }
 }
 
+// Only kinds that change state or act irreversibly need keyword grounding: an intent word/synonym
+// present in the text. Read-only/harmless kinds (status, next, resume, start, yes) are left out of
+// this map entirely -- they either read state or, for resume/start, only re-enable something the
+// founder already set up (see channel.ts), and "yes" only applies a confirmation already staged
+// from the ledger, never new data invented by the model. Those kinds are legitimate free-form model
+// interpretations ("where am I?" -> status, "how am I doing?" -> status, "I'm back" -> resume) and
+// must not be forced into keyword matching.
 const KIND_SYNONYM_RE: Partial<Record<ParsedCommand['kind'], RegExp>> = {
   approve: /\bapprove/i,
   deny: /\bdeny/i,
   pause: /\b(pause|traveling|travelling|no asks?)\b/i,
-  resume: /\bresume/i,
   add_evidence: /\b(add[ _]evidence|i\s+(judged|spoke|presented|published|wrote|reviewed|interviewed|won|received|got|gave|attended|was)\b)/i,
-  next: /\bnext\b/i,
-  status: /\bstatus\b/i,
   stop: /\bstop\b/i,
-  start: /\bstart\b/i,
-  yes: /\byes\b/i,
 };
 
-/** A command is grounded when its kind is implied by a keyword/synonym present in the text, and
- * any figure number(s) it cites actually appear in the text (as digits). unclear/status/next/
- * resume/start/stop/yes carry no figures to check beyond the kind keyword itself. */
-function isGrounded(cmd: ParsedCommand, text: string): boolean {
-  if (cmd.kind === 'unclear') return true;
+/** State-changing/irreversible claim in `description` (a URL or a distinctive word/phrase) must be
+ * traceable back to the source text -- the model may summarize but not invent evidence. */
+function descriptionGrounded(description: string, text: string): boolean {
+  const urls = description.match(/https?:\/\/\S+/g) ?? [];
+  if (urls.length) return urls.every((u) => text.includes(u));
+  const words = description.toLowerCase().match(/[a-z]{4,}/g) ?? [];
+  const textLower = text.toLowerCase();
+  return words.length === 0 || words.some((w) => textLower.includes(w));
+}
+
+/** A command is grounded when, for state-changing/irreversible kinds, its kind is implied by a
+ * keyword/synonym present in the text and every fact it carries (figure numbers, deny's reason,
+ * pause's date, add_evidence's claim) is actually derivable from the text. Read-only/harmless kinds
+ * (status, next, resume, start, yes) carry no grounding requirement -- see the note on
+ * KIND_SYNONYM_RE above. */
+const GROUNDED_KINDS = new Set<ParsedCommand['kind']>(['approve', 'deny', 'pause', 'stop', 'add_evidence']);
+
+function isGrounded(cmd: ParsedCommand, text: string, now: Date): boolean {
+  if (!GROUNDED_KINDS.has(cmd.kind)) return true;
+
   const re = KIND_SYNONYM_RE[cmd.kind];
   if (re && !re.test(text)) return false;
 
   const numbersInText = new Set(parseNumbers(text));
-  if (cmd.kind === 'approve' && cmd.figures !== 'all') {
+  if (cmd.kind === 'approve') {
+    if (cmd.figures === 'all') return true;
     return cmd.figures.every((n) => numbersInText.has(n));
   }
   if (cmd.kind === 'deny') {
-    return numbersInText.has(cmd.figure);
+    return numbersInText.has(cmd.figure) && descriptionGrounded(cmd.reason, text);
+  }
+  if (cmd.kind === 'pause') {
+    const derived = parseRelativeDate(text, now);
+    return derived !== null && derived === cmd.until;
+  }
+  if (cmd.kind === 'add_evidence') {
+    return descriptionGrounded(cmd.description, text);
   }
   return true;
 }

@@ -52,9 +52,27 @@ function sourceCell(f: FigureRow, i: number): string {
   return `${s.publisher} | ${s.kind} | ${s.url} | "${s.sentence}" | snapshot drive:${s.snapshot_pdf_id}`;
 }
 
-export function rowFor(f: FigureRow): string[] {
+/** Current ledger version of a figure's row identity (constraint 13). Unversioned figures default to 1. */
+export function figVersion(ledger: Ledger, figId: string): number {
+  const raw = ledger.get(`fig_version:${figId}`);
+  const n = raw ? Number(raw) : 1;
+  return Number.isFinite(n) && n >= 1 ? n : 1;
+}
+
+/**
+ * Parses the ID cell of a Sheet row back into a fig_id and the version it was queued at. Rows
+ * written before versioning existed (or at v1) carry the bare fig_id and parse as version 1, so
+ * old Sheets keep working without a migration.
+ */
+export function parseIdCell(idCell: string): { figId: string; version: number } {
+  const m = /^(.*) \(v(\d+)\)$/.exec(idCell);
+  if (m) return { figId: m[1]!, version: Number(m[2]) };
+  return { figId: idCell, version: 1 };
+}
+
+export function rowFor(f: FigureRow, version = 1): string[] {
   return [
-    f.fig_id,
+    version > 1 ? `${f.fig_id} (v${version})` : f.fig_id,
     f.exhibit_id,
     `#${f.criterion}`,
     figureCell(f),
@@ -87,7 +105,7 @@ export async function queueFigures(queued: FigureRow[], deps: ReviewDeps): Promi
   const toAppend = deps.ledger.figures({ status: 'pending' }).filter((f) => !deps.ledger.get(`on_sheet:${f.fig_id}`));
   if (toAppend.length === 0) return { sheetId, digestSent: false, degraded };
   try {
-    await deps.apps.sheets.appendRows(sheetId, toAppend.map(rowFor));
+    await deps.apps.sheets.appendRows(sheetId, toAppend.map((f) => rowFor(f, figVersion(deps.ledger, f.fig_id))));
   } catch (err) {
     if (err instanceof TwinStubError || err instanceof TwinExpiredError) throw err;
     deps.trace.tool('sheets.values.append', { spreadsheetId: sheetId, rows: toAppend.map((q) => q.fig_id) }, undefined, String(err));
@@ -124,15 +142,15 @@ async function contextNotesFile(deps: ReviewDeps, exhibitId: string): Promise<{ 
 }
 
 /**
- * `justStale` names figures that requeueStaleFigures just reset to `pending` this same run
- * (PRD 6.11). Their Sheet row still carries the founder's Approve from before staleness -- that
- * decision was made on a number that is now considered too old, so it must not count (constraint
- * 13). Those figures are held pending here regardless of what the (stale) row says; once
- * queueFigures appends a fresh row for them, a later run sees both rows and, because rows are
- * append-only, uses only the LAST row per fig_id -- so the old Approve is superseded rather than
- * re-read.
+ * Row identity is the figure's ledger version (constraint 13), not row order. Each fig_id's rows
+ * are grouped and filtered down to only those whose ID cell encodes the figure's CURRENT version
+ * (`figVersion`); a row from an older version is ignored no matter where it sits in the sheet --
+ * an append failure, a crash before the fresh row lands, or the founder reordering/sorting the
+ * sheet all leave old-version rows inert. If no row carries the current version yet, the figure
+ * stays pending. requeueStaleFigures bumps the version when it re-queues a stale figure, so the
+ * old Approve can never be re-read as a decision on the new version.
  */
-export async function applyDecisions(deps: ReviewDeps, justStale: Set<string> = new Set()): Promise<ReviewSummary> {
+export async function applyDecisions(deps: ReviewDeps): Promise<ReviewSummary> {
   const { apps, ledger, trace, now } = deps;
   const summary: ReviewSummary = { approved: [], denied: [], pending: [], flagged: [], digestSent: false, degraded: [] };
   const sheetId = ledger.get('review_sheet');
@@ -150,25 +168,32 @@ export async function applyDecisions(deps: ReviewDeps, justStale: Set<string> = 
   const header = rows[0] ?? REVIEW_HEADERS;
   const col = (name: string) => header.indexOf(name);
 
-  // Keep only the newest row per fig_id (rows are append-only, so a later row in the sheet
-  // supersedes an earlier one for the same figure -- this is what lets a fresh re-queue row
-  // override a stale Approve left on an older row).
-  const lastRowByFigId = new Map<string, string[]>();
+  // Group every row by fig_id, independent of order (a sort/reorder or a mid-run crash must not
+  // change which row counts).
+  const rowsByFigId = new Map<string, string[][]>();
   for (const row of rows.slice(1)) {
-    const figId = row[col('ID')] ?? '';
+    const idCell = row[col('ID')] ?? '';
+    if (!idCell) continue;
+    const { figId } = parseIdCell(idCell);
     if (!figId) continue;
-    lastRowByFigId.set(figId, row);
+    const arr = rowsByFigId.get(figId);
+    if (arr) arr.push(row);
+    else rowsByFigId.set(figId, [row]);
   }
 
-  for (const [figId, row] of lastRowByFigId) {
+  for (const [figId, allRows] of rowsByFigId) {
     const fig = ledger.figure(figId);
     if (!fig || fig.status !== 'pending') continue;
-    if (justStale.has(figId)) {
-      // Went stale this run: no row can carry a valid decision yet (the fresh row is appended
-      // later this same run, by queueFigures). Leave pending; do not read the old row at all.
+    const currentVersion = figVersion(ledger, figId);
+    const matching = allRows.filter((r) => parseIdCell(r[col('ID')] ?? '').version === currentVersion);
+    if (matching.length === 0) {
+      // No row carries the figure's current version yet (append failed, run crashed before
+      // queueFigures ran, or only stale-version rows exist). Stay pending; never fall back to an
+      // older-version row.
       summary.pending.push(figId);
       continue;
     }
+    const row = matching[matching.length - 1]!;
     if ((row[col('Figure and value')] ?? '') !== figureCell(fig)) {
       summary.flagged.push({ fig_id: figId, issue: 'value cell edited in the Sheet; ignored (the agent reads only Decision and Reason)' });
     }

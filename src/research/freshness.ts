@@ -36,10 +36,16 @@ export function requeueStaleFigures(ledger: Ledger, now: Date, ctx: { runId: str
     if (fig.decided_at && monthsBetween(fig.as_of, new Date(fig.decided_at)) >= FRESHNESS_MONTHS) continue;
     ledger.updateFigure(fig.fig_id, { status: 'pending', decided_at: null, decision_reason: null });
     ledger.set(`corroborated:${fig.exhibit_id.split('.v')[0]}`, '');
-    // Clear the on-Sheet flag so queueFigures appends a brand-new row for this figure. The old row
-    // still carries the founder's prior Approve, but that decision predates the staleness and must
-    // not count (constraint 13) -- applyDecisions is told about staleFigIds and ignores any row for
-    // them until a fresh row exists, then uses only the newest row per fig_id (see queue.ts).
+    // Bump the figure's row-identity version (constraint 13). The old Sheet row's ID cell still
+    // encodes the PREVIOUS version, so applyDecisions -- which only reads a decision from a row
+    // whose version equals the figure's current version -- can never read that row as a decision
+    // on the new version again, regardless of row order, a failed append, or a crash before the
+    // fresh row lands (see figVersion/parseIdCell in src/review/queue.ts).
+    const currentVersion = ledger.get(`fig_version:${fig.fig_id}`);
+    const nextVersion = (currentVersion ? Number(currentVersion) : 1) + 1;
+    ledger.set(`fig_version:${fig.fig_id}`, String(nextVersion));
+    // Clear the on-Sheet flag so queueFigures appends a brand-new (v${nextVersion}) row for this
+    // figure once research completes.
     ledger.set(`on_sheet:${fig.fig_id}`, '');
     ledger.event({
       run_id: ctx.runId,

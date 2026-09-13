@@ -112,3 +112,99 @@ describe('replay/retry dedupe', () => {
     }
   });
 });
+
+describe('failed processing does not poison the retry', () => {
+  it('Twilio: first onMessage throws, retry with the same MessageSid is processed exactly once', async () => {
+    const port = await freePort();
+    const authToken = 'twilio-secret';
+    const publicUrl = `http://127.0.0.1:${port}/twilio`;
+    const received: string[] = [];
+    let calls = 0;
+    const webhook = startWebhookServer({
+      port,
+      authToken,
+      publicUrl,
+      onMessage: (msg) => {
+        calls++;
+        if (calls === 1) throw new Error('boom');
+        received.push(msg.sid);
+      },
+    });
+    try {
+      const params = { From: '+15550001111', To: '+15550002222', Body: 'hi', MessageSid: 'SM-RETRY-1' };
+      const sig = twilioSignature(publicUrl, params, authToken);
+      const body = new URLSearchParams(params).toString();
+      const opts = { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-twilio-signature': sig }, body };
+      const res1 = await fetch(publicUrl, opts);
+      expect(res1.status).toBe(500);
+      const res2 = await fetch(publicUrl, opts);
+      expect(res2.status).toBe(200);
+      expect(received).toEqual(['SM-RETRY-1']);
+      expect(calls).toBe(2);
+    } finally {
+      await webhook.close();
+    }
+  });
+
+  it('Twilio: two concurrent deliveries of the same sid are processed once', async () => {
+    const port = await freePort();
+    const authToken = 'twilio-secret';
+    const publicUrl = `http://127.0.0.1:${port}/twilio`;
+    const received: string[] = [];
+    let calls = 0;
+    const webhook = startWebhookServer({
+      port,
+      authToken,
+      publicUrl,
+      onMessage: async (msg) => {
+        calls++;
+        await new Promise((r) => setTimeout(r, 50));
+        received.push(msg.sid);
+      },
+    });
+    try {
+      const params = { From: '+15550001111', To: '+15550002222', Body: 'hi', MessageSid: 'SM-CONCUR-1' };
+      const sig = twilioSignature(publicUrl, params, authToken);
+      const body = new URLSearchParams(params).toString();
+      const opts = { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-twilio-signature': sig }, body };
+      const [res1, res2] = await Promise.all([fetch(publicUrl, opts), fetch(publicUrl, opts)]);
+      expect(res1.status).toBe(200);
+      expect(res2.status).toBe(200);
+      expect(calls).toBe(1);
+      expect(received).toEqual(['SM-CONCUR-1']);
+    } finally {
+      await webhook.close();
+    }
+  });
+
+  it('Twilio: a successful delivery followed by a duplicate is processed once', async () => {
+    const port = await freePort();
+    const authToken = 'twilio-secret';
+    const publicUrl = `http://127.0.0.1:${port}/twilio`;
+    const received: string[] = [];
+    const webhook = startWebhookServer({
+      port,
+      authToken,
+      publicUrl,
+      onMessage: (msg) => {
+        received.push(msg.sid);
+      },
+    });
+    try {
+      const params = { From: '+15550001111', To: '+15550002222', Body: 'hi', MessageSid: 'SM-DUP-1' };
+      const sig = twilioSignature(publicUrl, params, authToken);
+      const body = new URLSearchParams(params).toString();
+      const opts = { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-twilio-signature': sig }, body };
+      const res1 = await fetch(publicUrl, opts);
+      const res2 = await fetch(publicUrl, opts);
+      expect(res1.status).toBe(200);
+      expect(res2.status).toBe(200);
+      expect(received).toEqual(['SM-DUP-1']);
+    } finally {
+      await webhook.close();
+    }
+  });
+
+
+
+});

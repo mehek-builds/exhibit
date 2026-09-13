@@ -240,6 +240,23 @@ describe('AnthropicCommandParser: request shape and schema-valid output (6.13)',
     vi.doUnmock('@ai-sdk/anthropic');
     vi.resetModules();
   });
+
+  it('parses the PRD 6.13 example with a grounded mocked model output', async () => {
+    vi.resetModules();
+    vi.doMock('@ai-sdk/anthropic', () => ({
+      createAnthropic: () => (_modelId: string) =>
+        mockModel(
+          textResult({ commands: [{ kind: 'approve', figures: [1] }, { kind: 'deny', figure: 2, reason: "that's the 2019 rate" }] }),
+        ),
+    }));
+    const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+    const parser = new MockedParser('unused-key', graph);
+    const out = await parser.parse("approve 1. deny 2, that's the 2019 rate", { now: NOW, pendingFigureNumbers: [1, 2] });
+    for (const c of out) expect(() => CommandSchema.parse(c)).not.toThrow();
+    expect(out).toEqual([{ kind: 'approve', figures: [1] }, { kind: 'deny', figure: 2, reason: "that's the 2019 rate" }]);
+    vi.doUnmock('@ai-sdk/anthropic');
+    vi.resetModules();
+  });
 });
 
 describe('rendered prompts: no identity numbers, data-not-instructions wording present (8, 11)', () => {

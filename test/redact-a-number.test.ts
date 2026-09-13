@@ -130,4 +130,64 @@ describe('redactText: A-number 7-9 digit range', () => {
     expect(text).toBe(prose);
     expect(redactions).toEqual([]);
   });
+
+  // N4 fix: ambiguity is resolved by FORM, not by the preceding word. A directly attached to
+  // digits, or attached via "-"/"#", is unambiguous and is always redacted -- even right after a
+  // label word like Exhibit/Type/Class/Series that would otherwise suppress the loose "A "+digits
+  // form.
+
+  it('redacts "Exhibit A-012-345-678" despite the "Exhibit" label (unambiguous dashed form)', () => {
+    const { text, redactions } = redactText('See Exhibit A-012-345-678 for details.');
+    expect(text).toContain('[REDACTED:a_number]');
+    expect(text).not.toMatch(/012.345.678/);
+    expect(redactions).toEqual([{ type: 'a_number', count: 1 }]);
+  });
+
+  it('redacts "Type A123456789" despite the "Type" label (unambiguous contiguous form)', () => {
+    const { text, redactions } = redactText('Type A123456789 was recorded.');
+    expect(text).toContain('[REDACTED:a_number]');
+    expect(text).not.toContain('123456789');
+    expect(redactions).toEqual([{ type: 'a_number', count: 1 }]);
+  });
+
+  it('redacts "Class A#123456789" despite the "Class" label (unambiguous "#" form)', () => {
+    const { text, redactions } = redactText('Class A#123456789 was assigned.');
+    expect(text).toContain('[REDACTED:a_number]');
+    expect(text).not.toContain('123456789');
+    expect(redactions).toEqual([{ type: 'a_number', count: 1 }]);
+  });
+
+  it('redacts "Series A-123456789" despite the "Series" label (unambiguous dashed form)', () => {
+    const { text, redactions } = redactText('Series A-123456789 closed last week.');
+    expect(text).toContain('[REDACTED:a_number]');
+    expect(text).not.toContain('123456789');
+    expect(redactions).toEqual([{ type: 'a_number', count: 1 }]);
+  });
+
+  it('does not redact "Round A 10 000 000" (ambiguous loose form after a label word)', () => {
+    const prose = 'Round A 10 000 000 was the funding headline.';
+    const { text, redactions } = redactText(prose);
+    expect(text).toBe(prose);
+    expect(redactions).toEqual([]);
+  });
+
+  it('redacts a standalone "A 012 345 678" at the start of a clause', () => {
+    const { text, redactions } = redactText('Filed under A 012 345 678 with the agency.');
+    expect(text).toContain('[REDACTED:a_number]');
+    expect(redactions).toEqual([{ type: 'a_number', count: 1 }]);
+  });
+
+  it('redacts the canonical 3-3-3 grouping even after a label word ("Type A 012 345 678")', () => {
+    for (const s of ['Type A 012 345 678 was recorded.', 'See Exhibit A 012 345 678.', 'Class A 123-456-789 on file.']) {
+      const { text, redactions } = redactText(s);
+      expect(text, s).toContain('[REDACTED:a_number]');
+      expect(redactions, s).toEqual([{ type: 'a_number', count: 1 }]);
+    }
+  });
+
+  it('still leaves differently shaped look-alikes after a label word alone', () => {
+    for (const s of ['Series A 12 345 678 closed.', 'Round A 10 000 000 raised.', 'Plan A 555-1234.', 'Grade A 2026 09 13.']) {
+      expect(redactText(s).text, s).toBe(s);
+    }
+  });
 });

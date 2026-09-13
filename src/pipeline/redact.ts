@@ -13,14 +13,39 @@ interface Pattern {
 const PATTERNS: Pattern[] = [
   { type: 'passport', re: /(passport(?:\s*(?:no\.?|number|num|#))?\s*[:#-]?\s*)([A-Z]{0,2}\d{6,9})\b/gi, group: 2 },
   // USCIS A-numbers are 7-9 digits, almost always written with an A prefix (A12345678,
-  // A-012-345-678, A 012 345 678, A# 123456789). Anchoring on the required "A" prefix (and capping
-  // the digit count at 9 with a trailing (?!\d)) is what keeps this from matching ordinary numbers,
-  // dates or phone-like counts, which never carry that prefix. A negative lookbehind excludes the
-  // "A" in phrases like "Series A", "Plan A", "Grade A" etc., where the letter is a grade/round
-  // marker rather than an A-number prefix.
+  // A-012-345-678, A 012 345 678, A# 123456789). Ambiguity is resolved by FORM, not by the
+  // preceding word: an A directly attached to digits, or attached via "-"/"#", is unambiguous and
+  // is always redacted regardless of what precedes it (e.g. "Exhibit A-012-345-678", "Type
+  // A123456789"). Only the loosest form -- "A" + a plain space + a digit group, with no "-"/"#"
+  // glue -- is truly ambiguous with phrases like "Series A 12 345 678" or "Grade A 2026 09 13", so
+  // that form alone is excluded when preceded by an ordinary label word ending in "A".
   {
+    // Unambiguous: A directly attached to 7-9 digits (A12345678).
     type: 'a_number',
-    re: /(?<!Series )(?<!Plan )(?<!Grade )(?<!Class )(?<!Type )(?<!Tier )(?<!Round )(?<!Exhibit )\b(A[-#]?\s?(?:\d[-# ]?){6,8}\d)(?!\d)\b/g,
+    re: /\b(A\d{6,8}\d)(?!\d)\b/g,
+    group: 1,
+  },
+  {
+    // Unambiguous: A followed by "-" or "#" then digits, optionally grouped with "-" or spaces
+    // (A-012-345-678, A#123456789, A# 123-456-789).
+    type: 'a_number',
+    re: /\b(A[-#]\s?(?:\d[-# ]?){6,8}\d)(?!\d)\b/g,
+    group: 1,
+  },
+  {
+    // Unambiguous: the canonical A-number grouping, three groups of three digits ("A 012 345 678"),
+    // is always redacted even after a label word. Under-redaction is the worse error (constraint 8),
+    // and look-alikes are shaped differently ("Series A 12 345 678", "Plan A 555-1234").
+    type: 'a_number',
+    re: /\b(A \d{3}[ -]\d{3}[ -]\d{3})(?!\d)\b/g,
+    group: 1,
+  },
+  {
+    // Ambiguous: A + plain space + digit group (no "-"/"#" glue). Excluded only when it follows an
+    // ordinary label word ending in "A" (Series/Plan/Grade/etc.), where the letter is a
+    // grade/round marker rather than an A-number prefix.
+    type: 'a_number',
+    re: /(?<!Series )(?<!Plan )(?<!Grade )(?<!Class )(?<!Type )(?<!Tier )(?<!Round )(?<!Exhibit )(?<!Option )(?<!Group )(?<!Section )(?<!Phase )(?<!Level )(?<!Batch )\b(A (?:\d[- ]?){6,8}\d)(?!\d)\b/g,
     group: 1,
   },
   // Labeled context: a recognized A-number label followed by 7-9 digits, with or without an "A"
