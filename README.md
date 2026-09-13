@@ -49,6 +49,10 @@ npx tsx src/cli.ts mutate                  # disables key rules one at a time; e
 npx tsx src/cli.ts prove-rules             # re-runs the scenarios behind any changed rule fragment
 npx tsx src/cli.ts brief --out BRIEF.md    # regenerates BRIEF.md's numbers from the latest reports
 npx tsx src/cli.ts verify                  # re-checks every binder file against its hash and timestamp proof
+
+# On Arga Labs' hosted twins (put ARGA_API_KEY=arga_sk_... in .env, which git ignores)
+node --env-file=.env node_modules/.bin/tsx src/cli.ts eval --backend arga --core --attempts 1
+node --env-file=.env node_modules/.bin/tsx src/cli.ts arga-demo   # seeds the full year, runs once, leaves the twins up to browse
 ```
 
 `npx tsx src/cli.ts help` lists the rest (`affected`, `check-rules`, `lift`, `run --live`,
@@ -59,11 +63,11 @@ npx tsx src/cli.ts verify                  # re-checks every binder file against
 
 Exhibit's proof is a loop across three platforms, each answering a different question (PRD 12.6):
 
-- **Arga** (before real data): every behavior is proven first against in-memory twins seeded with a
+- **Arga** (before real data): every behavior is proven first against twins seeded with a
   synthetic year and known traps (scenarios S1-S26 plus the lifted self-approval scenarios S19,
   S19b and S19-record), 3 graded attempts each, graded from twin end state and prohibited side
-  effects, not from Exhibit's own logs. `--backend arga` runs the same matrix against Arga's
-  hosted twins when `ARGA_API_KEY` is set (see [docs/ARGA.md](docs/ARGA.md)).
+  effects, not from Exhibit's own logs. `--backend arga` runs the matrix on Arga Labs' hosted
+  twins (see [docs/ARGA.md](docs/ARGA.md)); the default backend is in-memory.
 - **The trace audit** (on every run): `src/observability/audit.ts` audits every run's trace against
   seven failure modes (skipped work, out-of-scope work, instruction violation, integration failure,
   retry loop, hallucination, communication failure).
@@ -85,10 +89,15 @@ Exhibit's proof is a loop across three platforms, each answering a different que
 
 **Honesty notes, stated plainly:**
 
-- Exhibit's twins (`src/twins/*.ts`) are **in-memory fakes built for this project**, not Arga
-  Labs' hosted twin infrastructure. The Arga backend (`harness/arga-backend.ts`,
-  `harness/arga-seed.ts`) is built but has only been tested against a fake control plane — no
-  Arga key was available, so no graded run in this repo used hosted twins.
+- **The scenario matrix runs on Arga Labs' hosted twins.** `--backend arga` provisions real Arga
+  twins for Gmail, Google Calendar, Drive, Docs and Sheets, seeds Dara Voss's year into them
+  through the twins' own APIs, runs the agent against them, and grades from what the twins hold
+  afterwards (ARGA_RESULTS_PLACEHOLDER). GitHub and LinkedIn are read from seeded fixtures on
+  that backend, because Arga's GitHub seed cannot model third-party stars or the founder's
+  reviews. The default `eval` (no flag) still uses the in-memory fakes in `src/twins/*.ts`,
+  which are built for this project and are not Arga's. Running on Arga surfaced two twin
+  fidelity gaps and one googleapis bug, all worked around and written up in
+  [docs/ARGA.md](docs/ARGA.md).
 - When `ANTHROPIC_API_KEY` is unset (or `EXHIBIT_LIVE_MODEL` isn't `1`), Exhibit runs a
   **deterministic heuristic stand-in model** (`src/models/heuristic.ts`), not a real LLM call — see
   `harness/env.ts`'s `defaultModel()`.

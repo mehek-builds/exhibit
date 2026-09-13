@@ -110,7 +110,7 @@ covers each one.
 | GDELT, Hugging Face, BLS, O*NET, and the rest of 6.14 | `FixtureTransport` (`src/integrations/types.ts`) replaying recorded responses from `harness/fixtures/*.ts`; live `HttpTransport` implementations exist per adapter for `src/config.ts` to wire when keys are present | `src/integrations/*.ts` |
 | OpenTimestamps, Internet Archive | Fixture transport (`harness/fixtures/integrity.ts`) in harness/demo; real HTTP clients in `src/integrity/*.ts` | `src/integrity/extension.ts` |
 | The model (classifier/mapper/Corroborator) | `HeuristicModel` (`src/models/heuristic.ts`) deterministic stand-in when `ANTHROPIC_API_KEY` is absent or `EXHIBIT_LIVE_MODEL` isn't `1`; `AnthropicModel` (`src/models/anthropic.ts`) otherwise | `harness/env.ts` `defaultModel()` |
-| Arga's hosted twins | Default runs use `MemoryTwins`, Exhibit's own in-memory fake of the same app surface. `eval --backend arga` provisions hosted twins via `scenarios.create` and grades from state diffs, but has only been tested against a fake control plane (no Arga key in this build) | `src/twins/memory.ts`, `harness/arga-backend.ts`, [ARGA.md](ARGA.md) |
+| Arga's hosted twins | Default runs use `MemoryTwins`, Exhibit's own in-memory fake of the same app surface. `eval --backend arga` runs the matrix on Arga's hosted Gmail, Calendar, Drive, Docs and Sheets twins (GitHub and LinkedIn from seeded fixtures), seeding through the twins' APIs and grading from API reads before and after each run; verified against the live service 2026-09-13 | `src/twins/memory.ts`, `harness/arga-backend.ts`, [ARGA.md](ARGA.md) |
 
 ## 6. Hard constraints, mapped to enforcement
 
