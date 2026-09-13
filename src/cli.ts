@@ -279,13 +279,13 @@ async function cmdLift(args: string[]): Promise<void> {
 
 // ---------------- run / watch (live) ----------------
 
-const LIVE_ENV_VARS = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN', 'GITHUB_TOKEN'];
+const LIVE_ENV_VARS = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN', 'GITHUB_TOKEN', 'EXHIBIT_OWNER_EMAIL'];
 
 function explainLiveEnv(): void {
   console.log('Live mode needs --live plus these env vars:');
   console.log(`  Required: ${LIVE_ENV_VARS.join(', ')}`);
   console.log('  Optional: ANTHROPIC_API_KEY (else the heuristic model),');
-  console.log('            EXHIBIT_PROFILE (path to a founder profile JSON; required to run).');
+  console.log('            EXHIBIT_PROFILE (founder profile JSON string; required to run).');
 }
 
 async function cmdRun(args: string[]): Promise<void> {

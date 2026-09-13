@@ -9,7 +9,7 @@ import type { TextMessage } from '../apps/types.js';
 // on top of the regular hourly cadence. Mirrors cmdWatch in src/cli.ts, which this command is
 // meant to register alongside (patch below, cli.ts not owned here).
 
-const LIVE_ENV_VARS = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN', 'GITHUB_TOKEN'];
+const LIVE_ENV_VARS = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN', 'GITHUB_TOKEN', 'EXHIBIT_OWNER_EMAIL'];
 
 function explainLiveEnv(): void {
   console.log('serve needs the same env as `run --live`, plus TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_SENDER, TWILIO_PUBLIC_URL to serve the webhook.');

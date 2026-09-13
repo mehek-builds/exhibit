@@ -21,21 +21,35 @@ export const GOOGLE_SCOPES: ScopeInfo[] = [
 
 const RecommenderSchema = z.object({
   name: z.string(),
-  email: z.string(),
+  email: z.email(),
   relationship: z.enum(['dependent', 'independent']),
   role: z.string(),
 });
 
+function isClockTime(value: string): boolean {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  return !!match && Number(match[1]) < 24 && Number(match[2]) < 60;
+}
+
+function isIanaTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const QuietHoursSchema = z.object({
-  start: z.string().regex(/^\d{2}:\d{2}$/),
-  end: z.string().regex(/^\d{2}:\d{2}$/),
-  timeZone: z.string(),
+  start: z.string().refine(isClockTime, 'must be a valid HH:MM time'),
+  end: z.string().refine(isClockTime, 'must be a valid HH:MM time'),
+  timeZone: z.string().refine(isIanaTimeZone, 'must be a valid IANA time zone'),
 });
 
 export const ProfileInputSchema = z.object({
   name: z.string().min(1),
   aliases: z.array(z.string()).default([]),
-  emails: z.array(z.string()).min(1),
+  emails: z.array(z.email()).min(1),
   domain: z.string().min(1),
   company: z.string().min(1),
   githubLogins: z.array(z.string()).default([]),
@@ -44,15 +58,15 @@ export const ProfileInputSchema = z.object({
   field: z.string().min(1),
   targetFilingDate: z.string().min(1),
   recommenderCandidates: z.array(RecommenderSchema).default([]),
-  phone: z.string().optional(),
+  phone: z.string().regex(/^\+[1-9]\d{6,14}$/, 'must be in E.164 format').optional(),
   quietHours: QuietHoursSchema.optional(),
-  routes: z.array(z.enum(['O-1A', 'EB-1A'])).optional(),
+  routes: z.array(z.enum(['O-1A', 'EB-1A'])).min(1).optional(),
   scanSince: z.string().optional(),
   coauthors: z.array(z.string()).optional(),
   translationOptIn: z.array(z.string()).optional(),
   jobTitle: z.string().optional(),
   socCode: z.string().optional(),
-  controlledEmails: z.array(z.string()).optional(),
+  controlledEmails: z.array(z.email()).optional(),
 });
 
 export type ProfileValidationResult = { ok: true; profile: FounderProfile } | { ok: false; error: string };

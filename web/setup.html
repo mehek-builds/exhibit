@@ -222,9 +222,14 @@
   function validateForm(profile) {
     var errors = [];
     if (profile.routes.length === 0) errors.push('Pick at least one route: O-1A, EB-1A, or both.');
-    var badEmail = profile.emails.filter(function (e) { return e.indexOf('@') === -1; });
+    var badEmail = profile.emails.filter(function (e) { return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); });
     if (profile.emails.length === 0 || badEmail.length > 0) errors.push('Enter at least one valid email address.');
     if (profile.phone && !/^\+[1-9]\d{6,14}$/.test(profile.phone)) errors.push('Phone must be in E.164 format, e.g. +15551234567.');
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: profile.quietHours.timeZone }).format();
+    } catch (_) {
+      errors.push('Enter a valid IANA time zone, e.g. America/Los_Angeles or Asia/Dubai.');
+    }
     return errors;
   }
 
