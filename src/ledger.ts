@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { ExhibitRecord, FigureKind, FigureLabel, FigureStatus, Mapping, O1Criterion, SourceRef } from './types.js';
 
 // One ledger joins everything (PRD 12.6): every row carries the run id, scenario id,
-// Lemma trace id and release SHA, so every claim in the brief traces to a row.
+// trace id and release SHA, so every claim in the brief traces to a row.
 
 export interface RunRow {
   run_id: string;

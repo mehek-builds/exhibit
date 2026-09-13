@@ -8,7 +8,7 @@ import type { RuleChangeRow } from '../loop/ruleChanges.js';
 
 // `exhibit loop` and `exhibit rule-change` (PRD 12.6): the reviewer wires these into src/cli.ts.
 // loop prints where every lifted scenario stands and how the local audit's issues would score
-// against Lemma's precision/recall bar; rule-change appends one durable row for the brief's
+// against the audit's precision/recall bar; rule-change appends one durable row for the brief's
 // section 8.
 
 const REPORTS_DIR = join(process.cwd(), 'reports');

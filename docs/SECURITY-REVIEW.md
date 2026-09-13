@@ -112,5 +112,5 @@ calls). This is inconsistent with the redaction discipline applied everywhere el
   immigration-status details about a real person were found.
 - **Constraint 19 / claims honesty:** `src/brief.ts` derives "live" language from actually-recorded
   trace events; `src/integrations/uscis.ts` is labeled sandbox-only in its header comment; no
-  instances found describing Arga/Lemma/uberprompt as a hosted/production service when only a
+  instances found describing Arga/uberprompt as a hosted/production service when only a
   twin/fixture was used.

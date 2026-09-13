@@ -1,28 +1,9 @@
-import { describe, expect, it, vi } from 'vitest';
-import { LocalTracer, LemmaTracer, conversationThreadId } from '../src/observability/tracer.js';
+import { describe, expect, it } from 'vitest';
+import { LocalTracer, conversationThreadId } from '../src/observability/tracer.js';
 import type { TraceContext } from '../src/observability/tracer.js';
 
-// PRD 6.10: batch runs stay unthreaded so their issues appear immediately; text conversations (6.13)
-// carry a threadId per conversation so Lemma sees a misread command in the context of the exchange.
-// No network: a fake Lemma client is injected via the `client` constructor option. Never call the real
-// Lemma service from a test.
-
-function fakeLemma(opts: { onTrace?: (call: { name?: string; input?: unknown; threadId?: string; metadata?: Record<string, unknown> }) => void; throwOnDeliver?: boolean } = {}) {
-  return {
-    trace: vi.fn(async (traceOpts: { name?: string; input?: unknown; threadId?: string; metadata?: Record<string, unknown> }, fn: (ctx: unknown) => Promise<unknown>) => {
-      opts.onTrace?.(traceOpts);
-      const recorded: unknown[] = [];
-      const lemmaTrace = {
-        recordTool: (x: unknown) => recorded.push(x),
-        recordGeneration: (x: unknown) => recorded.push(x),
-        recordSpan: (x: unknown) => recorded.push(x),
-      };
-      const out = await fn(lemmaTrace);
-      if (opts.throwOnDeliver) throw new Error('lemma delivery boom');
-      return out;
-    }),
-  };
-}
+// PRD 6.10: batch runs stay unthreaded; text conversations (6.13) carry a threadId per conversation
+// so the audit reads a misread command in the context of the exchange.
 
 describe('LocalTracer.run: batch traces', () => {
   it('has no threadId and carries release + scenario metadata', async () => {
@@ -122,35 +103,5 @@ describe('LocalTracer: boundary scrub still applies', () => {
     });
     const leak = tracer.events({ threadId: thread }).find((e) => e.type === 'boundary_leak');
     expect(leak).toBeDefined();
-  });
-});
-
-describe('LemmaTracer: fake client, no network', () => {
-  it('a delivery failure does not change the returned result', async () => {
-    const lemma = fakeLemma({ throwOnDeliver: true });
-    const tracer = new LemmaTracer({ apiKey: 'k', projectId: 'p', client: lemma as never });
-    const { result } = await tracer.run({ name: 'exhibit', runId: 'r1', input: {} }, async () => ({ summary: { ok: true } }));
-    expect(result).toEqual({ summary: { ok: true } });
-    expect(tracer.deliveryErrors.length).toBeGreaterThan(0);
-  });
-
-  it('passes threadId and metadata through to the Lemma client for a threaded conversation trace', async () => {
-    const calls: { name?: string; threadId?: string; metadata?: Record<string, unknown> }[] = [];
-    const lemma = fakeLemma({ onTrace: (c) => calls.push(c) });
-    const tracer = new LemmaTracer({ apiKey: 'k', projectId: 'p', release: 'sha123', client: lemma as never });
-
-    await tracer.run({ name: 'exhibit', runId: 'r1', input: {}, metadata: { release: 'sha123', scenario_id: 's20' } }, async () => undefined);
-    expect(calls[0]!.threadId).toBeUndefined();
-    expect(calls[0]!.metadata).toEqual({ release: 'sha123', scenario_id: 's20' });
-
-    const thread = conversationThreadId('+15550100142', new Date());
-    await tracer.conversation({ threadId: thread, name: 'exhibit-text', input: {} }, async () => undefined);
-    expect(calls[1]!.threadId).toBe(thread);
-  });
-
-  it('never calls the real Lemma service -- the injected fake stands in for it', () => {
-    const lemma = fakeLemma();
-    const tracer = new LemmaTracer({ apiKey: 'k', projectId: 'p', client: lemma as never });
-    expect(tracer.kind).toBe('lemma+local');
   });
 });

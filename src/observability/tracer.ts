@@ -1,18 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { Lemma } from '@uselemma/tracing';
 import { scrubForBoundary } from '../pipeline/redact.js';
 import type { Redaction } from '../types.js';
 
-// Every run is one trace named `exhibit` (PRD 6.10). The local recorder always runs, because the
-// Arga grader and the local auditor read it; Lemma receives the same records when keys are set.
-// A Lemma delivery failure never replaces or hides Exhibit's own result.
+// Every run is one trace named `exhibit` (PRD 6.10). The Arga grader and the trace audit
+// (src/observability/audit.ts) both read it.
 //
-// PRD 6.10: text conversations (6.13) carry a threadId per conversation so Lemma sees a misread
-// command in the context of the exchange, and issue extraction for threaded traces waits until the
-// conversation goes quiet. Batch runs stay unthreaded so their issues appear immediately. PRD 12.6:
-// every trace carries the scenario id and the git SHA (release) as metadata.
+// PRD 6.10: text conversations (6.13) carry a threadId per conversation so the audit reads a
+// misread command in the context of the exchange. Batch runs stay unthreaded. PRD 12.6: every trace
+// carries the scenario id and the git SHA (release) as metadata.
 
 export interface TraceEvent {
   traceId: string;
@@ -59,17 +56,13 @@ export interface TraceConversationOptions {
 }
 
 export interface Tracer {
-  readonly kind: 'local' | 'lemma+local';
   run<T>(opts: TraceRunOptions, fn: (ctx: TraceContext) => Promise<T>): Promise<{ result: T; traceId: string }>;
   /** A nested, threaded trace (PRD 6.10) -- one per inbound text conversation, linked from the batch trace. */
   conversation<T>(opts: TraceConversationOptions, fn: (ctx: TraceContext) => Promise<T>): Promise<{ result: T; traceId: string }>;
   events(filter?: { traceId?: string; runId?: string; threadId?: string }): TraceEvent[];
-  deliveryErrors: string[];
 }
 
 export class LocalTracer implements Tracer {
-  readonly kind: Tracer['kind'] = 'local';
-  deliveryErrors: string[] = [];
   protected all: TraceEvent[] = [];
   private seq = 0;
 
@@ -83,7 +76,7 @@ export class LocalTracer implements Tracer {
     );
   }
 
-  protected push(ev: Omit<TraceEvent, 'seq'>, forward?: (ev: TraceEvent) => void): void {
+  protected push(ev: Omit<TraceEvent, 'seq'>): void {
     const scrubbedIn = scrubForBoundary(ev.input);
     const scrubbedOut = scrubForBoundary(ev.output);
     const leaked = [...scrubbedIn.leaked, ...scrubbedOut.leaked];
@@ -91,7 +84,6 @@ export class LocalTracer implements Tracer {
     const safe: TraceEvent = { ...ev, seq: this.seq, input: scrubbedIn.value, output: scrubbedOut.value };
     this.all.push(safe);
     if (this.dir) appendFileSync(join(this.dir, `${ev.traceId}.jsonl`), `${JSON.stringify(safe)}\n`);
-    forward?.(safe);
     if (leaked.length) {
       // The boundary scrub caught something upstream redaction missed. Recorded as a violation of
       // hard constraint 8, never silently absorbed.
@@ -102,15 +94,15 @@ export class LocalTracer implements Tracer {
     }
   }
 
-  protected context(traceId: string, runId: string, opts: { threadId?: string; metadata?: Record<string, string> } = {}, forward?: (ev: TraceEvent) => void): TraceContext {
+  protected context(traceId: string, runId: string, opts: { threadId?: string; metadata?: Record<string, string> } = {}): TraceContext {
     const { threadId, metadata } = opts;
     return {
       traceId,
       runId,
       threadId,
-      tool: (name, input, output, error) => this.push({ traceId, runId, threadId, metadata, type: 'tool', name, input, output, error }, forward),
-      generation: (name, model, input, output, error) => this.push({ traceId, runId, threadId, metadata, type: 'generation', name, model, input, output, error }, forward),
-      span: (name, input, output, error) => this.push({ traceId, runId, threadId, metadata, type: 'span', name, input, output, error }, forward),
+      tool: (name, input, output, error) => this.push({ traceId, runId, threadId, metadata, type: 'tool', name, input, output, error }),
+      generation: (name, model, input, output, error) => this.push({ traceId, runId, threadId, metadata, type: 'generation', name, model, input, output, error }),
+      span: (name, input, output, error) => this.push({ traceId, runId, threadId, metadata, type: 'span', name, input, output, error }),
     };
   }
 
@@ -125,61 +117,9 @@ export class LocalTracer implements Tracer {
 
   async conversation<T>(opts: TraceConversationOptions, fn: (ctx: TraceContext) => Promise<T>): Promise<{ result: T; traceId: string }> {
     const runId = opts.parentTrace?.runId ?? opts.threadId;
-    // Dispatches through `this.run`, so LemmaTracer's override (which delivers a threaded Lemma
-    // trace) applies automatically -- this method never needs its own override.
     const { result, traceId } = await this.run({ name: opts.name, runId, input: opts.input, threadId: opts.threadId, metadata: opts.metadata }, fn);
     opts.parentTrace?.span('conversation.link', { threadId: opts.threadId }, { traceId });
     return { result, traceId };
-  }
-}
-
-export class LemmaTracer extends LocalTracer {
-  override readonly kind: Tracer['kind'] = 'lemma+local';
-  private readonly lemma: Lemma;
-
-  constructor(opts: { apiKey: string; projectId: string; release?: string; dir?: string | null; client?: Lemma }) {
-    super(opts.dir ?? null);
-    this.lemma = opts.client ?? new Lemma({ apiKey: opts.apiKey, projectId: opts.projectId, release: opts.release });
-  }
-
-  override async run<T>(opts: TraceRunOptions, fn: (ctx: TraceContext) => Promise<T>): Promise<{ result: T; traceId: string }> {
-    const traceId = `tr_${randomUUID()}`;
-    let settled = false;
-    let result: T | undefined;
-    let failure: unknown;
-    const safeInput = scrubForBoundary({ ...(opts.input as object), exhibit_trace_id: traceId }).value;
-    try {
-      await this.lemma.trace({ name: opts.name, input: safeInput as never, threadId: opts.threadId, metadata: opts.metadata }, async (lemmaTrace) => {
-        const forward = (ev: TraceEvent) => {
-          try {
-            if (ev.type === 'tool') lemmaTrace.recordTool({ name: ev.name, input: ev.input as never, output: (ev.error ? { error: ev.error } : ev.output) as never });
-            else if (ev.type === 'generation') lemmaTrace.recordGeneration({ name: ev.name, input: ev.input as never, output: ev.output as never, model: ev.model });
-            else lemmaTrace.recordSpan({ name: ev.name, input: ev.input as never, output: (ev.error ? { error: ev.error } : ev.output) as never });
-          } catch (err) {
-            this.deliveryErrors.push(String(err));
-          }
-        };
-        const ctx = this.context(traceId, opts.runId, { threadId: opts.threadId, metadata: opts.metadata }, forward);
-        try {
-          result = await fn(ctx);
-        } catch (err) {
-          failure = err;
-        } finally {
-          settled = true;
-        }
-        if (failure) throw failure;
-        return summarize(result) as never;
-      });
-    } catch (err) {
-      if (!settled) {
-        // Lemma failed before the agent ran: run the agent with local tracing only.
-        this.deliveryErrors.push(`lemma trace start failed: ${String(err)}`);
-        return super.run(opts, fn);
-      }
-      if (failure) throw failure;
-      this.deliveryErrors.push(`lemma delivery failed: ${String(err)}`);
-    }
-    return { result: result as T, traceId };
   }
 }
 
@@ -198,11 +138,4 @@ function summarize(result: unknown): unknown {
 export function conversationThreadId(founderPhone: string, startedAt: Date): string {
   const digest = createHash('sha256').update(`${founderPhone}|${startedAt.toISOString()}`).digest('hex').slice(0, 24);
   return `conv_${digest}`;
-}
-
-export function createTracer(env: NodeJS.ProcessEnv, dir: string | null): Tracer {
-  if (env.LEMMA_API_KEY && env.LEMMA_PROJECT_ID) {
-    return new LemmaTracer({ apiKey: env.LEMMA_API_KEY, projectId: env.LEMMA_PROJECT_ID, release: env.LEMMA_RELEASE, dir });
-  }
-  return new LocalTracer(dir);
 }

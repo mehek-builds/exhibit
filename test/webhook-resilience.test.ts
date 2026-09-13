@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { connect, createServer } from 'node:net';
 import { startWebhookServer, twilioSignature } from '../src/server/webhook.js';
-import { lemmaSignature, startLemmaWebhookServer } from '../src/server/lemmaWebhook.js';
 
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -80,78 +79,9 @@ describe('webhook resilience: mid-body disconnects never crash the server', () =
     expect(uncaughtExceptions).toEqual([]);
   });
 
-  it('Lemma webhook survives a destroyed socket and keeps serving', async () => {
-    const port = await freePort();
-    const unhandledRejections: unknown[] = [];
-    const uncaughtExceptions: unknown[] = [];
-    const onRejection = (err: unknown) => unhandledRejections.push(err);
-    const onException = (err: unknown) => uncaughtExceptions.push(err);
-    process.on('unhandledRejection', onRejection);
-    process.on('uncaughtException', onException);
-
-    const secret = 'lemma-secret';
-    const sent: { to: string }[] = [];
-    const webhook = startLemmaWebhookServer({
-      port,
-      secret,
-      founderEmail: 'founder@example.com',
-      sendEmail: async (email) => {
-        sent.push(email);
-        return { id: 'm1' };
-      },
-    });
-
-    try {
-      await sendPartialThenDestroy(port, '/lemma', 1000);
-      await new Promise((r) => setTimeout(r, 100));
-
-      const body = JSON.stringify({ type: 'issue.created', issue: { id: 'ISS-1', title: 't', failureMode: 'f', traceUrl: 'u' } });
-      const sig = lemmaSignature(body, secret);
-      const res = await fetch(`http://127.0.0.1:${port}/lemma`, {
-        method: 'POST',
-        headers: { 'x-lemma-signature': sig },
-        body,
-      });
-      expect(res.status).toBe(200);
-      expect(sent).toHaveLength(1);
-    } finally {
-      process.off('unhandledRejection', onRejection);
-      process.off('uncaughtException', onException);
-      await webhook.close();
-    }
-
-    expect(unhandledRejections).toEqual([]);
-    expect(uncaughtExceptions).toEqual([]);
-  });
 });
 
 describe('replay/retry dedupe', () => {
-  it('a replayed, validly-signed Lemma request sends exactly one email total', async () => {
-    const port = await freePort();
-    const secret = 'lemma-secret';
-    const sent: { to: string }[] = [];
-    const webhook = startLemmaWebhookServer({
-      port,
-      secret,
-      founderEmail: 'founder@example.com',
-      sendEmail: async (email) => {
-        sent.push(email);
-        return { id: 'm1' };
-      },
-    });
-    try {
-      const body = JSON.stringify({ type: 'issue.created', issue: { id: 'ISS-9', title: 't', failureMode: 'f', traceUrl: 'u' } });
-      const sig = lemmaSignature(body, secret);
-      const url = `http://127.0.0.1:${port}/lemma`;
-      const res1 = await fetch(url, { method: 'POST', headers: { 'x-lemma-signature': sig }, body });
-      const res2 = await fetch(url, { method: 'POST', headers: { 'x-lemma-signature': sig }, body });
-      expect(res1.status).toBe(200);
-      expect(res2.status).toBe(200);
-      expect(sent).toHaveLength(1);
-    } finally {
-      await webhook.close();
-    }
-  });
 
   it('a duplicate Twilio MessageSid is processed exactly once', async () => {
     const port = await freePort();

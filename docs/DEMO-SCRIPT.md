@@ -52,11 +52,10 @@ PRD 14 beats because the actual output does not support them as written:
   Exhibit's own in-memory twin state (`env.twins.state()`), not a hosted Arga session. The proof
   loop's "3 of 3" pass-rate line only appears if `reports/eval-latest.json` exists from a prior
   `eval` run; otherwise the script says "run eval" and the presenter should not claim a number.
-- **No live Lemma run.** No Lemma API keys are configured for this run, so "Lemma caught one thing
-  no scenario predicted" is rewritten as: the local audit (in `out/demo-script-run/audit.json`)
-  caught one issue, mapped to Lemma's seven failure modes (PRD 12.4) — here, a `hallucination`
-  (a figure the model tried to cite that wasn't actually on the fetched page). It was not raised by
-  a hosted Lemma instance.
+- **The audit's catch is a hallucination.** "The audit caught one thing no scenario predicted"
+  refers to the trace audit (in `out/demo-script-run/audit.json`), which caught one issue under the
+  seven failure modes (PRD 12.4): a `hallucination` (a figure the model tried to cite that wasn't
+  actually on the fetched page). It has not been lifted into a new scenario in this run.
 - **No uberprompt run.** The dependency check ("3 prompts depend on it") comes from Exhibit's own
   `affected()` function over its internal prompt-dependency graph (`src/rules/graph.ts`), written
   in the format uberprompt's `affected` command would consume — not a Clera uberprompt process.
@@ -78,7 +77,7 @@ PRD 14 beats because the actual output does not support them as written:
 Everything shown ran live in this session, end to end, against Exhibit's own code — but "live" here
 means an in-memory synthetic year (Gmail/Calendar/Drive/Sheets/GitHub twins) with fixture
 transports standing in for GDELT, BLS, and Dropbox Sign, plus an in-memory Twilio fake for the text
-channel. No real inbox, no hosted Arga session, no live Lemma instance, and no real network call
+channel. No real inbox, no hosted Arga session, and no real network call
 left the machine during the demo. The classify → verify → file → corroborate → review pipeline is
 the real code path; what's synthetic is the founder's data and the external services' *responses*
 to that code, not the code itself.

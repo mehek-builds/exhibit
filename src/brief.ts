@@ -143,16 +143,16 @@ function systemParagraph(m: MatrixResult): string {
 
 function howWeKnow(): string {
   return [
-    'Four platforms, four questions. Each one\'s output feeds the next.',
+    'Four checks, four questions. Each one\'s output feeds the next.',
     '',
-    '| Question | Platform | Evidence below |',
+    '| Question | Check | Evidence below |',
     '|---|---|---|',
     '| Does it do the right thing, and nothing else, before it touches a real inbox? | **Arga** twins, 3 graded attempts per scenario | Section 5 |',
-    '| On real runs, does it follow its own rules, and what broke that no scenario predicted? | **Lemma** traces and issues | Section 6 |',
+    '| On real runs, does it follow its own rules, and what broke that no scenario predicted? | **Trace audit** of every run | Section 6 |',
     '| When it contacts a person, can it prove the message was worth sending? | **Userlens** worth-sending | Section 7 |',
     '| When a rule changes, do we know everything it touched, and did we re-prove it? | **Clera** uberprompt | Section 8 |',
     '',
-    'The loop: a rule change goes to uberprompt, which lists the affected prompts. Arga re-runs the scenarios that exercise them. Lemma traces every run. Any Lemma issue becomes a new Arga scenario. The issue counts as fixed only when that scenario passes 3 of 3 and Lemma does not reopen it. Section 9 shows the loop closed on a real issue from this build.',
+    'The loop: a rule change goes to uberprompt, which lists the affected prompts. Arga re-runs the scenarios that exercise them. The trace audit checks every run. Any audit issue becomes a new Arga scenario. The issue counts as fixed only when that scenario passes 3 of 3 and the audit does not raise it again. Section 9 shows the loop closed on a real issue from this build.',
     '',
     'One ledger. Every number in this brief comes from this batch\'s ledger, whose rows carry the run and scenario id, the trace id, the release and the exhibit, figure or message id.',
   ].join('\n');
@@ -177,7 +177,7 @@ function scenarioMatrixTable(m: MatrixResult): string {
     const st = statFor(m, id);
     return st && st.attempts > 0 ? `${st.passed}/${st.attempts}` : 'not run';
   });
-  rows.push(`| S19+ | Scenarios added from Lemma issues (section 9) | ${liftedStats.join(', ') || 'not run'} | ${lifted.length ? liftedStats.length : 'not run'} |`);
+  rows.push(`| S19+ | Scenarios added from audit issues (section 9) | ${liftedStats.join(', ') || 'not run'} | ${lifted.length ? liftedStats.length : 'not run'} |`);
   return [header, ...rows].join('\n');
 }
 
@@ -274,7 +274,7 @@ function argaSection(m: MatrixResult, mutation?: MutationResult): string {
   ].join('\n');
 }
 
-// ---------------- section 6: Lemma / local audit ----------------
+// ---------------- section 6: trace audit ----------------
 
 const FAILURE_MODES: { mode: string; label: string; seededBy: string }[] = [
   { mode: 'skipped_work', label: 'A qualifying email never filed; an invite never surfaced', seededBy: 'S1, S6' },
@@ -286,11 +286,8 @@ const FAILURE_MODES: { mode: string; label: string; seededBy: string }[] = [
   { mode: 'communication_failure', label: 'Scorecard says met while the ledger says building', seededBy: 'Constraint 10' },
 ];
 
-function lemmaMethod(): string {
-  const lemmaConnected = !!process.env.LEMMA_API_KEY;
-  return lemmaConnected
-    ? "Method. Local audit, Lemma stand-in; whether Lemma itself was also connected for these traces depends on LEMMA_API_KEY at run time (it was set when this brief was generated, but that does not prove every attempt used it)."
-    : 'Method. Local audit, Lemma stand-in; Lemma itself was not connected in this run (no LEMMA_API_KEY at brief generation time). Exhibit\'s hard constraints (section 4) are the provided context this audit judges each run against.';
+function auditMethod(): string {
+  return 'Method. src/observability/audit.ts reads every run\'s trace and judges it against Exhibit\'s hard constraints (section 4).';
 }
 
 function issuesTable(m: MatrixResult): string {
@@ -304,7 +301,7 @@ function issuesTable(m: MatrixResult): string {
     }
   }
   if (rows.length === 0) return `No audit issues were raised across ${m.attempts.length} attempt(s) in this batch.`;
-  const header = '| Issue | Lemma category | How it showed up | Fix (commit) | New scenario | Result | Reopened since? |\n|---|---|---|---|---|---|---|';
+  const header = '| Issue | Failure mode | How it showed up | Fix (commit) | New scenario | Result | Reopened since? |\n|---|---|---|---|---|---|---|';
   return [header, ...rows].join('\n');
 }
 
@@ -331,8 +328,8 @@ function detectorLabels(m: MatrixResult): string {
   return `Because Arga knows the right answer for every scenario, each local audit issue raised on an attempt can be checked against that attempt's grader result: ${correct} correct, ${falseAlarms} false alarm(s), ${missed} graded failure(s) the audit did not raise.`;
 }
 
-function lemmaSection(m: MatrixResult): string {
-  return [lemmaMethod(), '', 'Issues raised during the build:', '', issuesTable(m), '', "Failure-mode coverage (Lemma's seven modes, as they apply to Exhibit):", '', failureModeCoverage(m), '', 'Detector labels.', '', detectorLabels(m)].join('\n');
+function auditSection(m: MatrixResult): string {
+  return [auditMethod(), '', 'Issues raised during the build:', '', issuesTable(m), '', 'Failure-mode coverage (the seven modes, as they apply to Exhibit):', '', failureModeCoverage(m), '', 'Detector labels.', '', detectorLabels(m)].join('\n');
 }
 
 // ---------------- section 7: worth-sending ----------------
@@ -426,7 +423,7 @@ function liftedScenarioIds(m: MatrixResult): string[] {
 function loopSection(m: MatrixResult): string {
   const dir = join(process.cwd(), 'harness', 'lifted');
   if (!existsSync(dir) || readdirSync(dir).filter((f) => f.endsWith('.json')).length === 0) {
-    return 'No issue completed the loop in this batch: harness/lifted/ has no scenario lifted from a Lemma issue yet.';
+    return 'No issue completed the loop in this batch: harness/lifted/ has no scenario lifted from an audit issue yet.';
   }
   const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
   const rows = files.map((f) => {
@@ -564,7 +561,7 @@ function realVsSimulated(m: MatrixResult): string {
     '| The founder\'s data | Simulated: Dara Voss is fictional. No real inbox and no real immigration data were used |',
     `| The outlets and programs named in her evidence | Fictional in this build: Dara Voss's outlets and programs are .example domains, so no figure attached to them is a real statistic |`,
     `| Web research | ${allEvents(m).some((e) => e.detail?.transport === 'live') ? 'Live calls were recorded in this batch' : 'Fixtures only in this batch; no live web research event was recorded'} |`,
-    '| Lemma, worth-sending, uberprompt | worth-sending ran as a real local MCP server; Lemma and uberprompt ran as this repository\'s own local stand-ins in this batch (see sections 6 and 8) |',
+    '| worth-sending, uberprompt | worth-sending ran as a real local MCP server; uberprompt ran as this repository\'s own local stand-in in this batch (see section 8) |',
     '| The founder\'s approvals in the review Sheet | Seeded decisions in the twin for S18 |',
     `| The text thread | Command logic graded over the in-memory Twilio twin for S20; ${textLiveEvents ? 'a live transport event was recorded' : 'no live transport event was recorded in this batch'} |`,
     '| The setup page | Skipped: accounts were seeded in harness mode |',
@@ -584,7 +581,6 @@ function knownLimits(m: MatrixResult): string {
   const heuristic = m.model !== 'claude-sonnet-5' && !/claude/i.test(m.model);
   return [
     '- The criteria rules are working rules for an attorney to confirm, not legal conclusions.',
-    "- Lemma's issue detection is probabilistic; issues were checked against traces and known answers before being counted.",
     '- LinkedIn twin fidelity for posts and mentions: approximated by the in-memory twin, not confirmed against a real LinkedIn account.',
     '- Integrations listed as "specified, not built" in section 2 were designed but not run in this build.',
     "- Dropbox Sign ran in test mode; legally binding signatures need a paid plan. DeepL's free API lacks its paid plan's data-deletion terms, so only redacted, opted-in text was sent.",
@@ -651,7 +647,7 @@ export function generateBrief(opts: BriefOptions): string {
     '',
     howWeKnow(),
     '',
-    '## 4. Hard constraints (checked on every Arga attempt, uploaded to Lemma as provided context)',
+    '## 4. Hard constraints (checked on every Arga attempt and by the trace audit on every run)',
     '',
     HARD_CONSTRAINTS.map((c, i) => `${i + 1}. ${c}`).join('\n'),
     '',
@@ -659,9 +655,9 @@ export function generateBrief(opts: BriefOptions): string {
     '',
     argaSection(m, opts.mutation),
     '',
-    '## 6. On every run: Lemma',
+    '## 6. On every run: the trace audit',
     '',
-    lemmaSection(m),
+    auditSection(m),
     '',
     '## 7. When it contacts a person: Userlens worth-sending',
     '',
@@ -698,11 +694,10 @@ export function generateBrief(opts: BriefOptions): string {
     '## 14. What this build hands back to each platform',
     '',
     "- **Arga:** fidelity notes from the twins (section 5), and a new outcome-graded domain in the style of ArgaBench.",
-    '- **Lemma:** detector labels on known answers: correct, false and missed issues (section 6).',
     "- **Userlens:** send, revise and hold decisions for a new kind of message, asking a favor, with the reasons (section 7).",
     '- **Clera:** a production run of uberprompt on a TypeScript codebase with a real rule change (section 8).',
     '',
-    '**Arga is where it was allowed to fail. Lemma is how I know it stopped. Userlens decides when it may bother a human. Clera shows what a rule change touched.**',
+    '**Arga is where it was allowed to fail. The trace audit is how I know it stopped. Userlens decides when it may bother a human. Clera shows what a rule change touched.**',
   ];
   return lines.join('\n');
 }

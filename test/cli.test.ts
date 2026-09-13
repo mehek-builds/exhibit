@@ -99,7 +99,7 @@ describe('generateBrief', () => {
       '## 3. How we know it works',
       '## 4. Hard constraints',
       '## 5. Before real data: Arga',
-      '## 6. On every run: Lemma',
+      '## 6. On every run: the trace audit',
       '## 7. When it contacts a person: Userlens worth-sending',
       '## 8. When a rule changes: Clera uberprompt',
       '## 9. The loop, closed',
