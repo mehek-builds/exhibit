@@ -1,92 +1,146 @@
 [
   {
+    "id": "m-accel-reply",
+    "threadId": "m-accel",
     "from": "Dara Voss <dara@loomwork.example>",
     "to": [
       "sam@forgeaccel.example"
     ],
-    "subject": "Re: Congratulations: Loomwork is accepted to Forge Accelerator Batch F26",
     "date": "Fri, 20 Feb 2026 19:00:00 GMT",
-    "body": "Thank you Sam, we are thrilled and ready to get to work."
+    "subject": "Re: Congratulations: Loomwork is accepted to Forge Accelerator Batch F26",
+    "body": "Thank you Sam, we are thrilled and ready to get to work.",
+    "headers": {},
+    "labels": [
+      "SENT"
+    ],
+    "raw": "From: Dara Voss <dara@loomwork.example>\r\nTo: sam@forgeaccel.example\r\nDate: Fri, 20 Feb 2026 19:00:00 GMT\r\nSubject: Re: Congratulations: Loomwork is accepted to Forge Accelerator Batch F26\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThank you Sam, we are thrilled and ready to get to work."
   },
   {
+    "id": "m-hm-reply",
+    "threadId": "m-hm-invite",
     "from": "Dara Voss <dara@loomwork.example>",
     "to": [
       "marco@hackmesa.example"
     ],
-    "subject": "Re: Invitation to judge HackMesa 2026",
     "date": "Tue, 21 Oct 2025 09:00:00 GMT",
-    "body": "Hi Marco, I'd be glad to judge. Count me in!"
+    "subject": "Re: Invitation to judge HackMesa 2026",
+    "body": "Hi Marco, I'd be glad to judge. Count me in!",
+    "headers": {},
+    "labels": [
+      "SENT"
+    ],
+    "raw": "From: Dara Voss <dara@loomwork.example>\r\nTo: marco@hackmesa.example\r\nDate: Tue, 21 Oct 2025 09:00:00 GMT\r\nSubject: Re: Invitation to judge HackMesa 2026\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHi Marco, I'd be glad to judge. Count me in!"
   },
   {
+    "id": "m-bn-reply",
+    "threadId": "m-bn-invite",
     "from": "Dara Voss <dara@loomwork.example>",
     "to": [
       "priya@buildnight.example"
     ],
-    "subject": "Re: Would you judge Spring Build Night?",
     "date": "Tue, 03 Feb 2026 09:00:00 GMT",
-    "body": "Happy to judge! See you on the 14th."
+    "subject": "Re: Would you judge Spring Build Night?",
+    "body": "Happy to judge! See you on the 14th.",
+    "headers": {},
+    "labels": [
+      "SENT"
+    ],
+    "raw": "From: Dara Voss <dara@loomwork.example>\r\nTo: priya@buildnight.example\r\nDate: Tue, 03 Feb 2026 09:00:00 GMT\r\nSubject: Re: Would you judge Spring Build Night?\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHappy to judge! See you on the 14th."
   },
   {
+    "id": "m-dj-reply",
+    "threadId": "m-dj-invite",
     "from": "Dara Voss <dara@loomwork.example>",
     "to": [
       "judging@devjam.example"
     ],
-    "subject": "Re: Invitation to judge DevJam 2026",
     "date": "Fri, 03 Apr 2026 09:00:00 GMT",
-    "body": "Thanks for thinking of me. Unfortunately I can't make it this year."
+    "subject": "Re: Invitation to judge DevJam 2026",
+    "body": "Thanks for thinking of me. Unfortunately I can't make it this year.",
+    "headers": {},
+    "labels": [
+      "SENT"
+    ],
+    "raw": "From: Dara Voss <dara@loomwork.example>\r\nTo: judging@devjam.example\r\nDate: Fri, 03 Apr 2026 09:00:00 GMT\r\nSubject: Re: Invitation to judge DevJam 2026\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThanks for thinking of me. Unfortunately I can't make it this year."
   },
   {
+    "id": "msg_sent_0389",
+    "threadId": "msg_sent_0389",
     "from": "dara@loomwork.example",
     "to": [
       "dara@loomwork.example"
     ],
+    "date": "Sun, 13 Sep 2026 18:00:00 GMT",
     "subject": "[Exhibit] 6 figures waiting for review",
-    "date": "Sun, 13 Sep 2026 18:00:00 GMT",
-    "body": "6 context figures passed the source checks and need your decision.\n\nOpen the review sheet: https://docs.google.com/spreadsheets/d/sheet_0387\n\nEach row shows the figure, both sources with links, the exact sentences and the snapshots. Choose Approve or Deny (Deny needs a reason). Nothing enters the binder without your Approve.\n\n- FIG-001 (EX-1-001): acceptance rate: 1 percent of applicants accepted\n- FIG-003 (EX-2-001): acceptance rate: 2 percent of nominees admitted\n- FIG-004 (EX-3-001): monthly unique visitors: 1,150,000 monthly unique visitors\n- FIG-006 (EX-3-003): downloads per episode: 85,000 downloads per episode\n- FIG-008 (EX-4-001): submissions: 62 submissions\n- FIG-009 (EX-4-002): submissions: 40 submissions"
+    "body": "6 context figures passed the source checks and need your decision.\n\nOpen the review sheet: https://docs.google.com/spreadsheets/d/sheet_0388\n\nEach row shows the figure, both sources with links, the exact sentences and the snapshots. Choose Approve or Deny (Deny needs a reason). Nothing enters the binder without your Approve.\n\n- FIG-001 (EX-1-001): acceptance rate: 1 percent of applicants accepted\n- FIG-003 (EX-2-001): acceptance rate: 2 percent of nominees admitted\n- FIG-004 (EX-3-001): monthly unique visitors: 1,150,000 monthly unique visitors\n- FIG-006 (EX-3-003): downloads per episode: 85,000 downloads per episode\n- FIG-008 (EX-4-001): submissions: 62 submissions\n- FIG-009 (EX-4-002): submissions: 40 submissions",
+    "headers": {},
+    "labels": [
+      "SENT"
+    ],
+    "raw": "From: dara@loomwork.example\r\nTo: dara@loomwork.example\r\nDate: Sun, 13 Sep 2026 18:00:00 GMT\r\nSubject: [Exhibit] 6 figures waiting for review\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n6 context figures passed the source checks and need your decision.\n\nOpen the review sheet: https://docs.google.com/spreadsheets/d/sheet_0388\n\nEach row shows the figure, both sources with links, the exact sentences and the snapshots. Choose Approve or Deny (Deny needs a reason). Nothing enters the binder without your Approve.\n\n- FIG-001 (EX-1-001): acceptance rate: 1 percent of applicants accepted\n- FIG-003 (EX-2-001): acceptance rate: 2 percent of nominees admitted\n- FIG-004 (EX-3-001): monthly unique visitors: 1,150,000 monthly unique visitors\n- FIG-006 (EX-3-003): downloads per episode: 85,000 downloads per episode\n- FIG-008 (EX-4-001): submissions: 62 submissions\n- FIG-009 (EX-4-002): submissions: 40 submissions"
   },
   {
+    "id": "msg_sent_0391",
+    "threadId": "msg_sent_0391",
     "from": "dara@loomwork.example",
     "to": [
       "dara@loomwork.example"
     ],
+    "date": "Sun, 13 Sep 2026 18:00:00 GMT",
     "subject": "[Exhibit] Approve letter request LTR-priya to Priya Raman",
-    "date": "Sun, 13 Sep 2026 18:00:00 GMT",
-    "body": "worth-sending recommends sending this letter request (score 85).\n\nTo approve, reply with exactly this line:\nAPPROVE LTR-priya\n\nNothing is sent without that reply. The message that would go out:\n\nTo: priya@buildnight.example\nSubject: Would you consider a recommendation letter for Dara Voss?\n\nHi Priya,\n\nI'm putting together evidence for a U.S. extraordinary-ability petition, and your view of \"Would you judge Spring Build Night?\" would carry real weight.\nWould you be willing to review and sign a letter? I have drafted it below so you do not have to start from a blank page.\n\nIf now is not a good time, no reply is needed.\n\nThank you,\nDara Voss\n\n----- Draft letter -----\nDRAFT for Priya Raman to edit and sign. Nothing here is final without your review. Every fact below comes from a dated exhibit; please correct anything that does not match your records.\n\nTo: U.S. Citizenship and Immigration Services\nRe: Letter in support of Dara Voss\n\n1. My expertise\nI am Priya Raman, Program Director, Build Night. [Please add two or three sentences on your background and why you can evaluate work in software engineering (developer tooling and AI infrastructure).]\n\n2. How I know the work\n- Would you judge Spring Build Night? (buildnight.example, 2026-03-14; exhibit EX-4-002).\nI know Dara Voss's work through these events rather than through a personal or working relationship.\n\n3. Specific results\n- submissions judged: 40 (EX-4-002, observed 2026-09-13)\n\n4. Standing in the field\nIn my assessment, the work described above places Dara Voss among the small percentage at the top of software engineering (developer tooling and AI infrastructure). [Please state this in your own words, with the comparison you have in mind.]\n\n5. Recommendation\nFor the reasons above I support Dara Voss's petition. The exhibits cited relate to: #4 Judging.\n\n[Signature, title, organization, contact details]"
+    "body": "worth-sending recommends sending this letter request (score 85).\n\nTo approve, reply with exactly this line:\nAPPROVE LTR-priya\n\nNothing is sent without that reply. The message that would go out:\n\nTo: priya@buildnight.example\nSubject: Would you consider a recommendation letter for Dara Voss?\n\nHi Priya,\n\nI'm putting together evidence for a U.S. extraordinary-ability petition, and your view of \"Would you judge Spring Build Night?\" would carry real weight.\nWould you be willing to review and sign a letter? I have drafted it below so you do not have to start from a blank page.\n\nIf now is not a good time, no reply is needed.\n\nThank you,\nDara Voss\n\n----- Draft letter -----\nDRAFT for Priya Raman to edit and sign. Nothing here is final without your review. Every fact below comes from a dated exhibit; please correct anything that does not match your records.\n\nTo: U.S. Citizenship and Immigration Services\nRe: Letter in support of Dara Voss\n\n1. My expertise\nI am Priya Raman, Program Director, Build Night. [Please add two or three sentences on your background and why you can evaluate work in software engineering (developer tooling and AI infrastructure).]\n\n2. How I know the work\n- Would you judge Spring Build Night? (buildnight.example, 2026-03-14; exhibit EX-4-002).\nI know Dara Voss's work through these events rather than through a personal or working relationship.\n\n3. Specific results\n- submissions judged: 40 (EX-4-002, observed 2026-09-13)\n\n4. Standing in the field\nIn my assessment, the work described above places Dara Voss among the small percentage at the top of software engineering (developer tooling and AI infrastructure). [Please state this in your own words, with the comparison you have in mind.]\n\n5. Recommendation\nFor the reasons above I support Dara Voss's petition. The exhibits cited relate to: #4 Judging.\n\n[Signature, title, organization, contact details]",
+    "headers": {},
+    "labels": [
+      "SENT"
+    ],
+    "raw": "From: dara@loomwork.example\r\nTo: dara@loomwork.example\r\nDate: Sun, 13 Sep 2026 18:00:00 GMT\r\nSubject: [Exhibit] Approve letter request LTR-priya to Priya Raman\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nworth-sending recommends sending this letter request (score 85).\n\nTo approve, reply with exactly this line:\nAPPROVE LTR-priya\n\nNothing is sent without that reply. The message that would go out:\n\nTo: priya@buildnight.example\nSubject: Would you consider a recommendation letter for Dara Voss?\n\nHi Priya,\n\nI'm putting together evidence for a U.S. extraordinary-ability petition, and your view of \"Would you judge Spring Build Night?\" would carry real weight.\nWould you be willing to review and sign a letter? I have drafted it below so you do not have to start from a blank page.\n\nIf now is not a good time, no reply is needed.\n\nThank you,\nDara Voss\n\n----- Draft letter -----\nDRAFT for Priya Raman to edit and sign. Nothing here is final without your review. Every fact below comes from a dated exhibit; please correct anything that does not match your records.\n\nTo: U.S. Citizenship and Immigration Services\nRe: Letter in support of Dara Voss\n\n1. My expertise\nI am Priya Raman, Program Director, Build Night. [Please add two or three sentences on your background and why you can evaluate work in software engineering (developer tooling and AI infrastructure).]\n\n2. How I know the work\n- Would you judge Spring Build Night? (buildnight.example, 2026-03-14; exhibit EX-4-002).\nI know Dara Voss's work through these events rather than through a personal or working relationship.\n\n3. Specific results\n- submissions judged: 40 (EX-4-002, observed 2026-09-13)\n\n4. Standing in the field\nIn my assessment, the work described above places Dara Voss among the small percentage at the top of software engineering (developer tooling and AI infrastructure). [Please state this in your own words, with the comparison you have in mind.]\n\n5. Recommendation\nFor the reasons above I support Dara Voss's petition. The exhibits cited relate to: #4 Judging.\n\n[Signature, title, organization, contact details]"
   },
   {
+    "id": "msg_sent_0394",
+    "threadId": "msg_sent_0394",
     "from": "dara@loomwork.example",
     "to": [
       "dara@loomwork.example"
     ],
-    "subject": "[Exhibit] Approve letter request LTR-marco to Marco Ellis",
     "date": "Sun, 13 Sep 2026 18:00:00 GMT",
-    "body": "worth-sending recommends sending this letter request (score 85).\n\nTo approve, reply with exactly this line:\nAPPROVE LTR-marco\n\nNothing is sent without that reply. The message that would go out:\n\nTo: marco@hackmesa.example\nSubject: Would you consider a recommendation letter for Dara Voss?\n\nHi Marco,\n\nI'm putting together evidence for a U.S. extraordinary-ability petition, and your view of \"Invitation to judge HackMesa 2026\" would carry real weight.\nWould you be willing to review and sign a letter? I have drafted it below so you do not have to start from a blank page.\n\nIf now is not a good time, no reply is needed.\n\nThank you,\nDara Voss\n\n----- Draft letter -----\nDRAFT for Marco Ellis to edit and sign. Nothing here is final without your review. Every fact below comes from a dated exhibit; please correct anything that does not match your records.\n\nTo: U.S. Citizenship and Immigration Services\nRe: Letter in support of Dara Voss\n\n1. My expertise\nI am Marco Ellis, Lead Organizer, HackMesa. [Please add two or three sentences on your background and why you can evaluate work in software engineering (developer tooling and AI infrastructure).]\n\n2. How I know the work\n- Invitation to judge HackMesa 2026 (hackmesa.example, 2026-01-24; exhibit EX-4-001).\nI know Dara Voss's work through these events rather than through a personal or working relationship.\n\n3. Specific results\n- submissions judged: 62 (EX-4-001, observed 2026-09-13)\n\n4. Standing in the field\nIn my assessment, the work described above places Dara Voss among the small percentage at the top of software engineering (developer tooling and AI infrastructure). [Please state this in your own words, with the comparison you have in mind.]\n\n5. Recommendation\nFor the reasons above I support Dara Voss's petition. The exhibits cited relate to: #4 Judging.\n\n[Signature, title, organization, contact details]"
-  },
-  {
-    "from": "dara@loomwork.example",
-    "to": [
-      "dara@loomwork.example"
-    ],
     "subject": "[Exhibit] Approve letter request LTR-sam to Sam Ortiz",
-    "date": "Sun, 13 Sep 2026 18:00:00 GMT",
-    "body": "worth-sending recommends sending this letter request (score 85).\n\nTo approve, reply with exactly this line:\nAPPROVE LTR-sam\n\nNothing is sent without that reply. The message that would go out:\n\nTo: sam@forgeaccel.example\nSubject: Would you consider a recommendation letter for Dara Voss?\n\nHi Sam,\n\nI'm putting together evidence for a U.S. extraordinary-ability petition, and your view of \"Congratulations: Loomwork is accepted to Forge Accelerator Batch F26\" would carry real weight.\nWould you be willing to review and sign a letter? I have drafted it below so you do not have to start from a blank page.\n\nIf now is not a good time, no reply is needed.\n\nThank you,\nDara Voss\n\n----- Draft letter -----\nDRAFT for Sam Ortiz to edit and sign. Nothing here is final without your review. Every fact below comes from a dated exhibit; please correct anything that does not match your records.\n\nTo: U.S. Citizenship and Immigration Services\nRe: Letter in support of Dara Voss\n\n1. My expertise\nI am Sam Ortiz, Partner, Forge Accelerator. [Please add two or three sentences on your background and why you can evaluate work in software engineering (developer tooling and AI infrastructure).]\n\n2. How I know the work\n- Congratulations: Loomwork is accepted to Forge Accelerator Batch F26 (forgeaccel.example, 2026-02-20; exhibit EX-1-001).\nI have worked with Dara Voss directly in the context above.\n\n3. Specific results\n- [Add the specific results you observed.]\n\n4. Standing in the field\nIn my assessment, the work described above places Dara Voss among the small percentage at the top of software engineering (developer tooling and AI infrastructure). [Please state this in your own words, with the comparison you have in mind.]\n\n5. Recommendation\nFor the reasons above I support Dara Voss's petition. The exhibits cited relate to: #1 Awards; #2 Membership.\n\n[Signature, title, organization, contact details]"
+    "body": "worth-sending recommends sending this letter request (score 85).\n\nTo approve, reply with exactly this line:\nAPPROVE LTR-sam\n\nNothing is sent without that reply. The message that would go out:\n\nTo: sam@forgeaccel.example\nSubject: Would you consider a recommendation letter for Dara Voss?\n\nHi Sam,\n\nI'm putting together evidence for a U.S. extraordinary-ability petition, and your view of \"Congratulations: Loomwork is accepted to Forge Accelerator Batch F26\" would carry real weight.\nWould you be willing to review and sign a letter? I have drafted it below so you do not have to start from a blank page.\n\nIf now is not a good time, no reply is needed.\n\nThank you,\nDara Voss\n\n----- Draft letter -----\nDRAFT for Sam Ortiz to edit and sign. Nothing here is final without your review. Every fact below comes from a dated exhibit; please correct anything that does not match your records.\n\nTo: U.S. Citizenship and Immigration Services\nRe: Letter in support of Dara Voss\n\n1. My expertise\nI am Sam Ortiz, Partner, Forge Accelerator. [Please add two or three sentences on your background and why you can evaluate work in software engineering (developer tooling and AI infrastructure).]\n\n2. How I know the work\n- Congratulations: Loomwork is accepted to Forge Accelerator Batch F26 (forgeaccel.example, 2026-02-20; exhibit EX-1-001).\nI have worked with Dara Voss directly in the context above.\n\n3. Specific results\n- [Add the specific results you observed.]\n\n4. Standing in the field\nIn my assessment, the work described above places Dara Voss among the small percentage at the top of software engineering (developer tooling and AI infrastructure). [Please state this in your own words, with the comparison you have in mind.]\n\n5. Recommendation\nFor the reasons above I support Dara Voss's petition. The exhibits cited relate to: #1 Awards; #2 Membership.\n\n[Signature, title, organization, contact details]",
+    "headers": {},
+    "labels": [
+      "SENT"
+    ],
+    "raw": "From: dara@loomwork.example\r\nTo: dara@loomwork.example\r\nDate: Sun, 13 Sep 2026 18:00:00 GMT\r\nSubject: [Exhibit] Approve letter request LTR-sam to Sam Ortiz\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nworth-sending recommends sending this letter request (score 85).\n\nTo approve, reply with exactly this line:\nAPPROVE LTR-sam\n\nNothing is sent without that reply. The message that would go out:\n\nTo: sam@forgeaccel.example\nSubject: Would you consider a recommendation letter for Dara Voss?\n\nHi Sam,\n\nI'm putting together evidence for a U.S. extraordinary-ability petition, and your view of \"Congratulations: Loomwork is accepted to Forge Accelerator Batch F26\" would carry real weight.\nWould you be willing to review and sign a letter? I have drafted it below so you do not have to start from a blank page.\n\nIf now is not a good time, no reply is needed.\n\nThank you,\nDara Voss\n\n----- Draft letter -----\nDRAFT for Sam Ortiz to edit and sign. Nothing here is final without your review. Every fact below comes from a dated exhibit; please correct anything that does not match your records.\n\nTo: U.S. Citizenship and Immigration Services\nRe: Letter in support of Dara Voss\n\n1. My expertise\nI am Sam Ortiz, Partner, Forge Accelerator. [Please add two or three sentences on your background and why you can evaluate work in software engineering (developer tooling and AI infrastructure).]\n\n2. How I know the work\n- Congratulations: Loomwork is accepted to Forge Accelerator Batch F26 (forgeaccel.example, 2026-02-20; exhibit EX-1-001).\nI have worked with Dara Voss directly in the context above.\n\n3. Specific results\n- [Add the specific results you observed.]\n\n4. Standing in the field\nIn my assessment, the work described above places Dara Voss among the small percentage at the top of software engineering (developer tooling and AI infrastructure). [Please state this in your own words, with the comparison you have in mind.]\n\n5. Recommendation\nFor the reasons above I support Dara Voss's petition. The exhibits cited relate to: #1 Awards; #2 Membership.\n\n[Signature, title, organization, contact details]"
   },
   {
+    "id": "msg_sent_0396",
+    "threadId": "msg_sent_0396",
     "from": "dara@loomwork.example",
     "to": [
       "dara@loomwork.example"
     ],
-    "subject": "[Exhibit] Your first scorecard",
     "date": "Sun, 13 Sep 2026 18:00:00 GMT",
-    "body": "Done. I found 18 pieces of evidence you already have. O-1A: 7 of 8 criteria. EB-1A: 7 of 10. Closest gap: #6 Scholarly articles is empty: a talk at a major conference counts (comparable evidence); submit a talk proposal. 6 figures to review:\n1. FIG-001 (EX-1-001 #1): acceptance rate: 1 percent of applicants accepted\n2. FIG-003 (EX-2-001 #2): acceptance rate: 2 percent of nominees admitted\n3. FIG-004 (EX-3-001 #3): monthly unique visitors: 1,150,000 monthly unique visitors\n4. FIG-006 (EX-3-003 #3): downloads per episode: 85,000 downloads per episode\n5. FIG-008 (EX-4-001 #4): submissions: 62 submissions\n6. FIG-009 (EX-4-002 #4): submissions: 40 submissions\nReply \"approve <numbers>\" or \"approve all\", or \"deny <number> <reason>\"."
+    "subject": "[Exhibit] Your first scorecard",
+    "body": "Done. I found 18 pieces of evidence you already have. O-1A: 7 of 8 criteria. EB-1A: 7 of 10. Closest gap: #6 Scholarly articles is empty: a talk at a major conference counts (comparable evidence); submit a talk proposal. 6 figures to review:\n1. FIG-001 (EX-1-001 #1): acceptance rate: 1 percent of applicants accepted\n2. FIG-003 (EX-2-001 #2): acceptance rate: 2 percent of nominees admitted\n3. FIG-004 (EX-3-001 #3): monthly unique visitors: 1,150,000 monthly unique visitors\n4. FIG-006 (EX-3-003 #3): downloads per episode: 85,000 downloads per episode\n5. FIG-008 (EX-4-001 #4): submissions: 62 submissions\n6. FIG-009 (EX-4-002 #4): submissions: 40 submissions\nReply \"approve <numbers>\" or \"approve all\", or \"deny <number> <reason>\".",
+    "headers": {},
+    "labels": [
+      "SENT"
+    ],
+    "raw": "From: dara@loomwork.example\r\nTo: dara@loomwork.example\r\nDate: Sun, 13 Sep 2026 18:00:00 GMT\r\nSubject: [Exhibit] Your first scorecard\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nDone. I found 18 pieces of evidence you already have. O-1A: 7 of 8 criteria. EB-1A: 7 of 10. Closest gap: #6 Scholarly articles is empty: a talk at a major conference counts (comparable evidence); submit a talk proposal. 6 figures to review:\n1. FIG-001 (EX-1-001 #1): acceptance rate: 1 percent of applicants accepted\n2. FIG-003 (EX-2-001 #2): acceptance rate: 2 percent of nominees admitted\n3. FIG-004 (EX-3-001 #3): monthly unique visitors: 1,150,000 monthly unique visitors\n4. FIG-006 (EX-3-003 #3): downloads per episode: 85,000 downloads per episode\n5. FIG-008 (EX-4-001 #4): submissions: 62 submissions\n6. FIG-009 (EX-4-002 #4): submissions: 40 submissions\nReply \"approve <numbers>\" or \"approve all\", or \"deny <number> <reason>\"."
   },
   {
+    "id": "msg_sent_0400",
+    "threadId": "msg_sent_0400",
     "from": "dara@loomwork.example",
     "to": [
       "priya@buildnight.example"
     ],
-    "subject": "Would you consider a recommendation letter for Dara Voss?",
     "date": "Sun, 13 Sep 2026 19:00:00 GMT",
-    "body": "Hi Priya,\n\nI'm putting together evidence for a U.S. extraordinary-ability petition, and your view of \"Would you judge Spring Build Night?\" would carry real weight.\nWould you be willing to review and sign a letter? I have drafted it below so you do not have to start from a blank page.\n\nIf now is not a good time, no reply is needed.\n\nThank you,\nDara Voss\n\n----- Draft letter -----\nDRAFT for Priya Raman to edit and sign. Nothing here is final without your review. Every fact below comes from a dated exhibit; please correct anything that does not match your records.\n\nTo: U.S. Citizenship and Immigration Services\nRe: Letter in support of Dara Voss\n\n1. My expertise\nI am Priya Raman, Program Director, Build Night. [Please add two or three sentences on your background and why you can evaluate work in software engineering (developer tooling and AI infrastructure).]\n\n2. How I know the work\n- Would you judge Spring Build Night? (buildnight.example, 2026-03-14; exhibit EX-4-002).\nI know Dara Voss's work through these events rather than through a personal or working relationship.\n\n3. Specific results\n- submissions judged: 40 (EX-4-002, observed 2026-09-13)\n\n4. Standing in the field\nIn my assessment, the work described above places Dara Voss among the small percentage at the top of software engineering (developer tooling and AI infrastructure). [Please state this in your own words, with the comparison you have in mind.]\n\n5. Recommendation\nFor the reasons above I support Dara Voss's petition. The exhibits cited relate to: #4 Judging.\n\n[Signature, title, organization, contact details]"
+    "subject": "Would you consider a recommendation letter for Dara Voss?",
+    "body": "Hi Priya,\n\nI'm putting together evidence for a U.S. extraordinary-ability petition, and your view of \"Would you judge Spring Build Night?\" would carry real weight.\nWould you be willing to review and sign a letter? I have drafted it below so you do not have to start from a blank page.\n\nIf now is not a good time, no reply is needed.\n\nThank you,\nDara Voss\n\n----- Draft letter -----\nDRAFT for Priya Raman to edit and sign. Nothing here is final without your review. Every fact below comes from a dated exhibit; please correct anything that does not match your records.\n\nTo: U.S. Citizenship and Immigration Services\nRe: Letter in support of Dara Voss\n\n1. My expertise\nI am Priya Raman, Program Director, Build Night. [Please add two or three sentences on your background and why you can evaluate work in software engineering (developer tooling and AI infrastructure).]\n\n2. How I know the work\n- Would you judge Spring Build Night? (buildnight.example, 2026-03-14; exhibit EX-4-002).\nI know Dara Voss's work through these events rather than through a personal or working relationship.\n\n3. Specific results\n- submissions judged: 40 (EX-4-002, observed 2026-09-13)\n\n4. Standing in the field\nIn my assessment, the work described above places Dara Voss among the small percentage at the top of software engineering (developer tooling and AI infrastructure). [Please state this in your own words, with the comparison you have in mind.]\n\n5. Recommendation\nFor the reasons above I support Dara Voss's petition. The exhibits cited relate to: #4 Judging.\n\n[Signature, title, organization, contact details]",
+    "headers": {},
+    "labels": [
+      "SENT"
+    ],
+    "raw": "From: dara@loomwork.example\r\nTo: priya@buildnight.example\r\nDate: Sun, 13 Sep 2026 19:00:00 GMT\r\nSubject: Would you consider a recommendation letter for Dara Voss?\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHi Priya,\n\nI'm putting together evidence for a U.S. extraordinary-ability petition, and your view of \"Would you judge Spring Build Night?\" would carry real weight.\nWould you be willing to review and sign a letter? I have drafted it below so you do not have to start from a blank page.\n\nIf now is not a good time, no reply is needed.\n\nThank you,\nDara Voss\n\n----- Draft letter -----\nDRAFT for Priya Raman to edit and sign. Nothing here is final without your review. Every fact below comes from a dated exhibit; please correct anything that does not match your records.\n\nTo: U.S. Citizenship and Immigration Services\nRe: Letter in support of Dara Voss\n\n1. My expertise\nI am Priya Raman, Program Director, Build Night. [Please add two or three sentences on your background and why you can evaluate work in software engineering (developer tooling and AI infrastructure).]\n\n2. How I know the work\n- Would you judge Spring Build Night? (buildnight.example, 2026-03-14; exhibit EX-4-002).\nI know Dara Voss's work through these events rather than through a personal or working relationship.\n\n3. Specific results\n- submissions judged: 40 (EX-4-002, observed 2026-09-13)\n\n4. Standing in the field\nIn my assessment, the work described above places Dara Voss among the small percentage at the top of software engineering (developer tooling and AI infrastructure). [Please state this in your own words, with the comparison you have in mind.]\n\n5. Recommendation\nFor the reasons above I support Dara Voss's petition. The exhibits cited relate to: #4 Judging.\n\n[Signature, title, organization, contact details]"
   }
 ]

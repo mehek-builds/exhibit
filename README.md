@@ -45,19 +45,25 @@ Sign) — every integration on a free tier.
 npm ci
 npx tsx src/cli.ts demo                    # the two-minute demo (PRD 14), on the full synthetic year
 npx tsx src/cli.ts eval --attempts 3       # runs the Arga scenario matrix, 3 attempts each, graded from twin state
-npx tsx src/cli.ts brief                   # regenerates BRIEF.md's numbers from the run ledger
+npx tsx src/cli.ts mutate                  # disables key rules one at a time; each must turn a scenario red
+npx tsx src/cli.ts prove-rules             # re-runs the scenarios behind any changed rule fragment
+npx tsx src/cli.ts brief --out BRIEF.md    # regenerates BRIEF.md's numbers from the latest reports
+npx tsx src/cli.ts verify                  # re-checks every binder file against its hash and timestamp proof
 ```
 
-There is no `verify` subcommand in `src/cli.ts` yet — see "patches needed" below. `npm run brief`
-and `npm run eval` (see `package.json`) wrap the same commands.
+`npx tsx src/cli.ts help` lists the rest (`affected`, `check-rules`, `lift`, `run --live`,
+`watch --live`, `serve`, `loop`). `npm run check` runs typecheck, tests and the rule check;
+`npm run eval`, `npm run brief` and friends in `package.json` wrap the same commands.
 
 ## How it proves itself
 
 Exhibit's proof is a loop across four platforms, each answering a different question (PRD 12.6):
 
 - **Arga** (before real data): every behavior is proven first against in-memory twins seeded with a
-  synthetic year and known traps, scenarios S1-S24, 3 graded attempts each, graded from twin end
-  state, not from Exhibit's own logs.
+  synthetic year and known traps (scenarios S1-S26 plus the lifted self-approval scenarios S19,
+  S19b and S19-record), 3 graded attempts each, graded from twin end state and prohibited side
+  effects, not from Exhibit's own logs. `--backend arga` runs the same matrix against Arga's
+  hosted twins when `ARGA_API_KEY` is set (see [docs/ARGA.md](docs/ARGA.md)).
 - **Lemma** (on every run): traces are audited against a local mirror of Lemma's seven failure
   modes (skipped work, out-of-scope work, instruction violation, integration failure, retry loop,
   hallucination, communication failure) — `src/observability/audit.ts` runs the same check when a
@@ -69,15 +75,21 @@ Exhibit's proof is a loop across four platforms, each answering a different ques
   shared fragments; changing one runs `affected()` over the dependency graph to list every prompt
   that uses it, and picks the Arga scenarios that exercise those prompts to re-run before the
   change merges.
-- **The mutation check**: `npx tsx src/cli.ts mutate` flips known trap/qualifying answers and
-  confirms the graded scenarios actually fail when the underlying behavior is wrong — a guard
-  against a scenario that would pass no matter what the code does.
+- **The mutation check**: `npx tsx src/cli.ts mutate` disables one rule at a time (accelerator
+  acceptance, funding-is-not-an-award, the second-identifier rule, verified-number texts,
+  confirm-before-irreversible, translation opt-in, the tamper check, both signing approvals) and
+  confirms the scenario that covers it goes red — a guard against a scenario that would pass no
+  matter what the code does.
+- **Degraded modes** (PRD 10): when Gmail, Calendar, Drive, Sheets, Docs, GitHub, search or a
+  verifier API fails, the run records the app as degraded and keeps going, never substituting a
+  weaker source silently; queued work is retried once the app is back (`test/degraded.test.ts`).
 
 **Honesty notes, stated plainly:**
 
 - Exhibit's twins (`src/twins/*.ts`) are **in-memory fakes built for this project**, not Arga
-  Labs' hosted twin infrastructure. No `docs/ARGA.md` exists in this repo describing a hosted-twin
-  integration, so nothing here claims one.
+  Labs' hosted twin infrastructure. The Arga backend (`harness/arga-backend.ts`,
+  `harness/arga-seed.ts`) is built but has only been tested against a fake control plane — no
+  Arga key was available, so no graded run in this repo used hosted twins.
 - When `ANTHROPIC_API_KEY` is unset (or `EXHIBIT_LIVE_MODEL` isn't `1`), Exhibit runs a
   **deterministic heuristic stand-in model** (`src/models/heuristic.ts`), not a real LLM call — see
   `harness/env.ts`'s `defaultModel()`.
@@ -104,11 +116,15 @@ current numbers, so nothing here can go stale.
 | `src/pipeline/`, `src/rules/` | Classify, map, verify; the criterion prompt graph and trap rules |
 | `src/binder/`, `src/review/` | Drive filing, scorecard rendering, the review queue |
 | `src/research/`, `src/integrations/` | The Corroborator and every 6.14 adapter |
-| `src/letters/`, `src/text/`, `src/notify/`, `src/discovery/`, `src/integrity/` | Letter requests and signing, the text channel, notifications, discovery, tamper-evidence |
-| `src/twins/`, `harness/` | In-memory fakes, fixtures, and the graded Arga-style scenario matrix (`harness/scenarios/`) |
+| `src/letters/`, `src/text/`, `src/notify/`, `src/discovery/`, `src/integrity/`, `src/translate/` | Letter requests and signing, the text channel, notifications, discovery, tamper-evidence, opt-in draft translation |
+| `src/commands/`, `src/server/`, `src/loop/`, `src/setup/` | `verify`/`serve`/`loop` commands, the Twilio webhook, lifted-scenario loop and rule-change records, founder profile setup |
+| `src/twins/`, `harness/` | In-memory fakes, fixtures, the graded scenario matrix (`harness/scenarios/`), fault injection, and the Arga backend |
 | `src/apps/live/`, `src/config.ts` | Real clients, wired only when their env vars are present |
 | `src/demo.ts`, `src/cli.ts` | The two-minute demo and the `exhibit` CLI |
 | `docs/PRD.md`, `docs/ARCHITECTURE.md`, `docs/reliability-brief-template.md` | Spec, code map, and the brief skeleton `npx tsx src/cli.ts brief` fills in |
+| `docs/ARGA.md`, `docs/LLM-PATH.md`, `docs/SECURITY-REVIEW.md`, `docs/integrations/` | Arga backend notes, the Claude model path, the security review, live-smoke and OpenTimestamps notes |
+| `docs/DEMO-SCRIPT.md`, `docs/sample-output/` | The two-minute presenter script and a committed slice of one demo run |
+| `BRIEF.md`, `prompts/` | The generated reliability brief; the prompt graph, rule proofs and rule-change records |
 | `constraints/hard-constraints.md` | The 19 hard rules, mapped to enforcement |
 
 ## Live mode and environment variables

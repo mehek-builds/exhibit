@@ -4,7 +4,7 @@
     "constraint": 3,
     "title": "Hallucinated figure discarded",
     "detail": "{\"sentence\":\"Signal & Noise reaches 3,000,000 readers every month.\",\"url\":\"https://signalnoise.example/about\",\"value\":3000000}",
-    "traceId": "tr_a9f22416-3b4f-46f4-b0d8-17b164f0e4db",
+    "traceId": "tr_35eb7050-af4c-44a0-b292-b3d87b21b76d",
     "fingerprint": "hallucination:Hallucinated figure discarded"
   }
 ]

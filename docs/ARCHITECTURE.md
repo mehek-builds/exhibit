@@ -87,8 +87,18 @@ itself:
   web search (`src/research/structured.ts`); `src/demo.ts` wires a `FixtureTransport`-backed BLS
   adapter here for the #8 wage benchmark.
 
-`harness/scenarios/s20.ts` through `s24.ts` are the canonical examples of wiring each 6.13/6.14
+`harness/scenarios/s20.ts` through `s26-proactive.ts` are the canonical examples of wiring each 6.13/6.14
 feature into a graded scenario; `src/demo.ts` follows the same pattern for the two-minute demo.
+
+## 4b. Degraded modes (PRD 10)
+
+Every app call in intake, filing, review and letters distinguishes a real outage from a twin signal
+(`src/pipeline/resilience.ts`): a twin stub hit fails loudly, an expired twin is extended and retried
+once (twice expired makes the attempt `degraded`), and a genuine outage adds the app to the run's
+`degraded` list and the run continues. The Corroborator never falls back from a failing verifier API
+to web search, figures queued while Sheets is down are appended once it returns, and failed Internet
+Archive saves are retried. `harness/faults.ts` injects these failures; `test/degraded.test.ts`
+covers each one.
 
 ## 5. Twin/fixture boundary: what's real, what's fake
 
@@ -100,7 +110,7 @@ feature into a graded scenario; `src/demo.ts` follows the same pattern for the t
 | GDELT, Hugging Face, BLS, O*NET, and the rest of 6.14 | `FixtureTransport` (`src/integrations/types.ts`) replaying recorded responses from `harness/fixtures/*.ts`; live `HttpTransport` implementations exist per adapter for `src/config.ts` to wire when keys are present | `src/integrations/*.ts` |
 | OpenTimestamps, Internet Archive | Fixture transport (`harness/fixtures/integrity.ts`) in harness/demo; real HTTP clients in `src/integrity/*.ts` | `src/integrity/extension.ts` |
 | The model (classifier/mapper/Corroborator) | `HeuristicModel` (`src/models/heuristic.ts`) deterministic stand-in when `ANTHROPIC_API_KEY` is absent or `EXHIBIT_LIVE_MODEL` isn't `1`; `AnthropicModel` (`src/models/anthropic.ts`) otherwise | `harness/env.ts` `defaultModel()` |
-| Arga's hosted twins | Not used by the harness at all. `MemoryTwins` is Exhibit's own in-memory fake of the same app surface, built for this build, not Arga's hosted twin infrastructure | `src/twins/memory.ts` |
+| Arga's hosted twins | Default runs use `MemoryTwins`, Exhibit's own in-memory fake of the same app surface. `eval --backend arga` provisions hosted twins via `scenarios.create` and grades from state diffs, but has only been tested against a fake control plane (no Arga key in this build) | `src/twins/memory.ts`, `harness/arga-backend.ts`, [ARGA.md](ARGA.md) |
 
 ## 6. Hard constraints, mapped to enforcement
 
@@ -111,7 +121,7 @@ reference and add rules 15-19.
 
 | # | Rule | Enforced in |
 |---|---|---|
-| 1 | No email without founder approval tied to that message | `src/letters/letters.ts` (reads `APPROVE <id>` from the founder before sending) |
+| 1 | No email without founder approval tied to that message | `src/letters/letters.ts` `approvalFor` (reads `APPROVE <id>` from the founder, after the request, excluding the agent's own messages and quoted request text); the audit rejects an approval that is an agent message |
 | 2 | Never email USCIS/consulate/attorney domains | `ATTORNEY_OR_GOV` recipient check, `src/letters/letters.ts` |
 | 3 | No `qualifying` filing without cited rule, exact quote, verified date/source | `src/pipeline/mapper.ts` (quote check), `src/pipeline/verifier.ts` (date/issuer) |
 | 4 | Known traps never filed as qualifying | `src/rules/explicit.ts`, `enforceInvariants` |
@@ -127,7 +137,7 @@ reference and add rules 15-19.
 | 14 | No source outside the primary/verifier lists | `allowed_domains` on the web tools, re-checked per URL, `src/research/corroborator.ts` |
 | 15 | Texts only from the verified number; unclear text gets a question, never a guess | `src/text/channel.ts` (`normalizeNumber` check, `HeuristicCommandParser`/structured parser) |
 | 16 | Discovered items need the founder's name + a second identifier | `src/discovery/extension.ts`, `src/discovery/identity.ts` |
-| 17 | Each integration receives only its minimum | Per-adapter payload construction, `src/integrations/*.ts` (e.g. OpenTimestamps sees only a 64-hex digest, `src/integrity/extension.ts`) |
+| 17 | Each integration receives only its minimum | Per-adapter payload construction, `src/integrations/*.ts` (e.g. OpenTimestamps sees only a 32-byte sha256 digest, `src/integrity/opentimestamps.ts`) |
 | 18 | No Dropbox Sign request before both confirmations; test mode only on the day | `src/letters/signing.ts`, `src/integrations/dropboxsign.ts` (`EXHIBIT_ALLOW_LIVE_SIGNATURES` gate) |
 | 19 | Never describe an integration as live unless it ran in this build | `src/integrations/registry.ts` (`used_live` only from a live `integration_call` event) |
 

@@ -26,7 +26,7 @@ these.
 | | Point at "Next action" line | "And it tells her what to do next: criterion 6 is empty, but a talk at a major conference counts as comparable evidence — submit a talk proposal." | `Next action: #6 Scholarly articles is empty: a talk at a major conference counts (comparable evidence); submit a talk proposal` |
 | 1:10–1:30 | Open `out/demo-script-run/review-sheet.csv` | "Every figure Exhibit wants to use gets a human decision first. This run queued 6 figures for review. I'll act as Dara: approve two, deny one — here, the visitor count doesn't clearly match the exhibit, so it's denied with a reason." | `Figures queued: 6` list; `Founder approves FIG-001, FIG-003; denies FIG-004.` |
 | | Point at text-channel block | "The same approval can come in by text. Here Exhibit received 'approve 1, deny 2, old rate' and applied it: figure 1 approved, figure 2 denied with the reason 'old rate' attached." | `#1 (FIG-001) -> approved` / `#2 (FIG-003) -> denied (reason: old rate)` — note: this run's in-memory Twilio fake, not a live WhatsApp send |
-| 1:30–1:40 | Point at "Run 2" and "Letters" blocks | "One hour later, the approved figure is written into the exhibit's notes, the denied one appears nowhere in the binder. A letter request to a recommender went out only after Dara replied APPROVE by email." | `FIG-001: written to context-notes.md` / `FIG-004: appears nowhere in the binder (denied)` / `sent (after APPROVE): LTR-priya` |
+| 1:30–1:40 | Point at "Run 2" and "Letters" blocks | "One hour later, the approved figure is written into the exhibit's notes, the denied one appears nowhere in the binder. One letter request was held because the recommender had just said he was busy; another went out only after Dara replied APPROVE by email." | `FIG-001: written to context-notes.md` / `FIG-004: appears nowhere in the binder (denied)` / `held: LTR-marco — Timing is below the required minimum of 2/4.` / `sent (after APPROVE): LTR-priya` |
 | 1:40–1:50 | Point at "Integrity" block | "Now the tamper check. Every file in the binder is stamped; I altered one on purpose, and `exhibit verify` catches it by name." | `stamped: 43, verify passed: 42, pending: 0, failed: 1` / `tampered file: original.eml — caught by name (original.eml)` |
 | 1:50–2:00 | Point at closing summary lines | "Today I changed a rule: accelerator acceptance now counts under #1 and #2. The dependency check found 3 prompts that use that rule — the mapper, the scorecard writer, the letter drafter — mapped to 8 scenarios. This run's own audit caught one thing no scenario predicted: a hallucinated figure, discarded before it reached the binder." | `The dependents check ... found 3 prompt(s) ... (letter-drafter, mapper, scorecard-writer), exercised by scenarios S1, S2, S3, S4, S6, S10, S11, S16.` / `audit.json`: one issue, `"mode": "hallucination"` |
 | | Close | "Judging today counts. If anyone here is on a visa, an agent like this just filed it for them." | PRD 14 closing beat, generalized (no judge named) |
@@ -94,9 +94,10 @@ rules in the codebase.
 
 **"What stops it emailing a recommender without approval?"**
 Every letter request goes to `held`, `awaiting approval`, or `sent` — never `sent` without a
-preceding approval action, per this run's own log: 3 letters were drafted and all 3 sat "awaiting
-your approval," and the 1 that sent did so only after the founder's `APPROVE LTR-priya` reply was
-recorded. That's Userlens' worth-sending decision plus a required human approval step (PRD 12.6),
-and the ledger records a decision and reason for every letter — see
-`Letters: drafted 3, held 0, awaiting approval 3, sent 0` before approval, and `sent (after
-APPROVE): LTR-priya` after it, in this run's console output.
+preceding approval action, per this run's own log: 3 letters were drafted; worth-sending held one
+(LTR-marco, whose recent email said he was busy), two sat "awaiting your approval," and the 1 that
+sent did so only after the founder's `APPROVE LTR-priya` reply was recorded. The agent's own
+approval-request email is never read as the founder's approval (scenario S19). That's Userlens'
+worth-sending decision plus a required human approval step (PRD 12.6), and the ledger records a
+decision and reason for every letter — see `Letters: drafted 3, held 1, awaiting approval 2, sent 0`
+before approval, and `sent (after APPROVE): LTR-priya` after it, in this run's console output.

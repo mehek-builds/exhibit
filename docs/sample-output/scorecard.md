@@ -30,7 +30,8 @@ Final-merits warnings for the attorney:
 - Thin criteria (met by one exhibit only): #5, #7.
 - No comparison to peers: #8 has no approved pay benchmark.
 
-Letters: 3 drafted, 2 awaiting your approval, 1 sent, 0 held (target 5 to 8; dependent 1, independent 2).
+Letters: 3 drafted, 1 awaiting your approval, 1 sent, 1 held (target 5 to 8; dependent 1, independent 2).
+- held LTR-marco: Timing is below the required minimum of 2/4.
 
 Context figures: 1 approved, 3 pending your review, 2 denied.
 Research gaps:
@@ -44,3 +45,8 @@ Not counted, by reason:
 - T-invite-declined: 1
 - T-press-release: 1
 - T-self-authored-not-press: 1
+
+Tamper-evidence: 43 artifact(s) stamped, 0 confirmed, 43 pending.
+
+Discovery this period:
+- gdelt: 2 found, 3 rejected (second-identifier rule), 4 merged with an inbox item
