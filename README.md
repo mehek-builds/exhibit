@@ -91,6 +91,13 @@ runs -- so a second `run --mock` followed by `verify --mock` reports those proof
 uses a synthetic fixture chain (fake heights, fake merkle roots) persisted in `mock-state.json`
 inside the state dir, not a real Bitcoin lookup; a byte-altered artifact still reports failed.
 
+To check every stage at once, run `npx tsx src/cli.ts flow`. It walks the whole PRD flow on mock data
+in one process (setup, intake and redaction, classification, discovery, filing, corroboration and
+the review Sheet, notifications, Sheet and text decisions through the real webhook, letters,
+signing, translation, integrity and tamper detection, the Sunday digest and stop, freshness,
+idempotency and the safety audit). It prints PASS or FAIL per stage and exits 1 if any stage fails.
+Output goes to `out/flow/` (gitignored). See [docs/FLOW.md](docs/FLOW.md).
+
 ## How it proves itself
 
 Exhibit's proof is a loop across three platforms, each answering a different question (PRD 12.6):

@@ -110,16 +110,27 @@ describe('exhibit --mock mode', () => {
       });
     });
 
-    // Give the startup run a moment to finish before texting.
-    await new Promise((r) => setTimeout(r, 2000));
+    // Wait for the startup run to finish (it queues the figures the founder can approve) before texting.
+    const startupDeadline = Date.now() + 90_000;
+    while (!/\[startup\]/.test(stdout) && Date.now() < startupDeadline) await new Promise((r) => setTimeout(r, 250));
+    expect(stdout).toMatch(/\[startup\]/);
 
-    const status = runCli(['text', '--mock', '--port', String(port), 'status'], { timeoutMs: 30_000 });
+    // The founder's text reaches the text channel and gets a real reply, not just an HTTP 200.
+    const status = runCli(['text', '--mock', '--port', String(port), 'status'], { timeoutMs: 40_000 });
     expect(status.status).toBe(0);
     expect(status.stdout).toMatch(/POST .* -> 200/);
+    expect(status.stdout).toMatch(/Reply:/);
 
+    // A founder command actually changes state: approving figure 1 is acknowledged in the reply.
+    const approve = runCli(['text', '--mock', '--port', String(port), 'approve 1'], { timeoutMs: 40_000 });
+    expect(approve.status).toBe(0);
+    expect(approve.stdout).toMatch(/Reply:[\s\S]*approv/i);
+
+    // Any other number is dropped (constraint 15): no reply is produced for it.
     const ignored = runCli(['text', '--mock', '--port', String(port), '--from', '+15550000000', 'approve 1'], { timeoutMs: 30_000 });
     expect(ignored.status).toBe(0);
     expect(ignored.stdout).toMatch(/Ignored:/);
+    expect(ignored.stdout).not.toMatch(/Reply:/);
   }, 120_000);
 
   // The simulated nightly upgrade job (PRD E63) and the persisted fake chain (harness/fixtures/integrity.ts,

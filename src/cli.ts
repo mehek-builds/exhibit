@@ -478,6 +478,16 @@ async function cmdText(args: string[]): Promise<void> {
   const signature = twilioSignature(url, params, authToken);
   const body = new URLSearchParams(params).toString();
 
+  type OutboxMessage = { direction: string; to: string; from: string; body: string };
+  const outboxUrl = `http://127.0.0.1:${port + 1}/mock/outbox`;
+  const readOutbound = async (): Promise<OutboxMessage[] | null> => {
+    const r = await fetch(outboxUrl).catch(() => null);
+    if (!r || r.status !== 200) return null;
+    const json = (await r.json()) as { messages: OutboxMessage[] };
+    return json.messages.filter((m) => m.direction === 'outbound');
+  };
+  const before = (await readOutbound())?.length ?? 0;
+
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-twilio-signature': signature },
@@ -485,23 +495,26 @@ async function cmdText(args: string[]): Promise<void> {
   });
   console.log(`POST ${url} -> ${res.status}`);
   await res.text().catch(() => '');
+  if (from !== founderPhone) return;
 
-  // Give serve --mock's inbound-triggered run a moment to finish before reading the outbox.
-  await new Promise<void>((resolve) => setTimeout(resolve, 500));
-
-  const outboxRes = await fetch(`http://127.0.0.1:${port + 1}/mock/outbox`).catch(() => null);
-  if (!outboxRes || outboxRes.status !== 200) {
-    console.log('(no /mock/outbox reply available)');
-    return;
+  // The reply comes from the run serve --mock triggers on this text; wait for a new outbound message.
+  const deadline = Date.now() + 20_000;
+  while (Date.now() < deadline) {
+    const outbound = await readOutbound();
+    if (outbound === null) {
+      console.log('(no /mock/outbox available: is `serve --mock` running on this port?)');
+      process.exitCode = 1;
+      return;
+    }
+    if (outbound.length > before) {
+      console.log('Reply:');
+      for (const r of outbound.slice(before)) console.log(`  ${r.from} -> ${r.to}: ${r.body}`);
+      return;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
   }
-  const outbox = (await outboxRes.json()) as { messages: { direction: string; to: string; from: string; body: string }[] };
-  const replies = outbox.messages.filter((m) => m.direction === 'outbound');
-  if (replies.length === 0) {
-    console.log('(no reply recorded yet)');
-  } else {
-    console.log('Replies:');
-    for (const r of replies.slice(-5)) console.log(`  ${r.from} -> ${r.to}: ${r.body}`);
-  }
+  console.log('(no reply within 20s)');
+  process.exitCode = 1;
 }
 
 // ---------------- help ----------------

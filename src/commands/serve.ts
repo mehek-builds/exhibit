@@ -91,6 +91,10 @@ async function cmdServeMock(values: { interval?: string; port?: string; state?: 
         console.log(`${new Date().toISOString()} [inbound-text] ignored: ${msg.from} is not the synthetic founder's verified number.`);
         return;
       }
+      // Deliver the text into the mock Twilio inbox so the text channel's listInbound() sees it on
+      // the run below; without this the run fires but the founder's command is never read.
+      const twilio = env.deps.apps.twilio;
+      if (twilio instanceof MemoryTwilio) twilio.adminInbound(msg.from, msg.body, env.clock.now().toISOString());
       void runOnce('inbound-text');
     },
   };
