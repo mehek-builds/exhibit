@@ -379,6 +379,12 @@ describe('createArgaHarnessEnv against the fake Arga service', () => {
       expect(fake.state.calls.delete).toBe(1);
     });
 
+    it('refuses a baseline taken before every seeded message is listed (late-listed seed mail would read as agent sends)', async () => {
+      fake = await startFakeArga({ owner: OWNER });
+      const env = await open();
+      await expect(env.twins.captureBaseline({ messages: SEED.gmail.length + 5, pollMs: 10, timeoutMs: 150 })).rejects.toThrow(/arga_seed_not_visible: gmail lists 3 of 8/);
+    });
+
     it('forces degraded with a named reason when a twin cannot be read after the run, and clears once it can', async () => {
       fake = await startFakeArga({ owner: OWNER });
       const env = await open();
