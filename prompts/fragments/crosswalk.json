@@ -2,10 +2,12 @@
   "name": "crosswalk",
   "version": 1,
   "rules": [
-    "X-exhibition-eb1a-only"
+    "X-exhibition-eb1a-only",
+    "X-artistic-athletic-eb1a-only",
+    "X-performing-arts-eb1a-only"
   ],
   "text": [
     "Crosswalk: whatever satisfies the EB-1A version of a criterion also works for its O-1A counterpart. O-1A 1-8 map to EB-1A i, ii, iii, iv, v, vi, viii, ix.",
-    "Exceptions: display at artistic exhibitions (EB-1A vii) counts for EB-1A only (X-exhibition-eb1a-only); commercial success in the performing arts (EB-1A x) is EB-1A only; a signed contract for future pay counts for O-1A #8 but is building for EB-1A until paid (X-future-pay); artistic or athletic contributions are EB-1A only and need the attorney for O-1A."
+    "Exceptions: display at artistic exhibitions (EB-1A vii) counts for EB-1A only (X-exhibition-eb1a-only); commercial success in the performing arts (EB-1A x) is EB-1A only (X-performing-arts-eb1a-only); a signed contract for future pay counts for O-1A #8 but is building for EB-1A until paid (X-future-pay); artistic or athletic original contributions of major significance (EB-1A v) are EB-1A only and route to needs_attorney for O-1A (X-artistic-athletic-eb1a-only)."
   ]
 }

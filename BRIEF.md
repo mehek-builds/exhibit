@@ -1,7 +1,6 @@
-Wrote BRIEF.md
-em and reliability brief
+# Exhibit: system and reliability brief
 
-Batch: batch_1789322254328 | Release: dev | Brief generated: 2026-09-13T17:59:50.264Z | Eval window: 2026-09-13T17:57:09.533Z to 2026-09-13T17:57:34.328Z
+Batch: batch_1789336747474 | Release: ef39be1 | Brief generated: 2026-09-13T22:01:03.135Z | Eval window: 2026-09-13T21:58:44.323Z to 2026-09-13T21:59:07.474Z
 
 ## 1. What it does
 
@@ -18,7 +17,7 @@ A classifier and a criterion mapper (Claude, through the Vercel AI SDK) sort eac
 | Plumbing (the founder's own data and the binder) | Gmail, Google Calendar, Google Drive, Google Sheets, Google Docs, GitHub | Arga twins |
 | Discover evidence she never saw | GDELT (world news), Podcast Index, Hacker News, Product Hunt, OpenReview, ORCID, Hugging Face Hub, SEC EDGAR (Form D), USPTO PatentSearch | Recorded responses replayed with injected edge cases (S21); a discovered item must name the founder and a second identifier |
 | Verify the numbers from official data | OpenAlex, Crossref, Semantic Scholar (journals and citations), BLS and O*NET (the 90th-percentile wage for her occupation code), ecosyste.ms (package adoption) | Recorded responses; every figure still needs two sources and her approval |
-| Make the binder tamper-evident | Internet Archive Save Page Now (dated third-party copies of public sources), OpenTimestamps (each exhibit's hash anchored in Bitcoin) | Verified by `exhibit verify` (S22), which anyone can re-run |
+| Make the binder tamper-evident | Internet Archive Save Page Now (dated third-party copies of public sources), OpenTimestamps (each stampable artifact hash is submitted to timestamp calendars; Bitcoin anchoring exists only after confirmation) | Verified by `exhibit verify` (S22), which anyone can re-run |
 | Act | Dropbox Sign (letters out for signature, test mode), DeepL API Free (draft translations, flagged for a certified translator), Twilio free trial (the message thread) | State read back from each service (S23, S24); Twilio twin (S20) |
 | After filing | USCIS Case Status API (Torch) | Sandbox only; production access pending USCIS approval |
 
@@ -26,9 +25,9 @@ Built on the day vs. specified but not built, split by what was actually run (re
 
 | Category | Integrations |
 |---|---|
-| Built and fixture-tested (this eval batch) | none |
+| Built and fixture-tested (this eval batch) | Hugging Face Hub, Product Hunt, Podcast Index, USPTO PatentSearch, OpenReview, ORCID, SEC EDGAR (Form D) |
 | Exercised live (smoke — docs/integrations/LIVE-SMOKE.md, 2026-09-13) | GDELT (smoke: one request, keyless; ran only on an empty result (0 hits); not a positive live parse), Hacker News (smoke: one request, keyless; exercised live), Crossref (smoke: one request, keyless; exercised live), BLS (90th-percentile wage) (smoke: one request, keyless; exercised live, unregistered-key path), ecosyste.ms (smoke: one request, keyless; exercised live), Platform stats (GitHub/Google plumbing) (smoke: one request, keyless; GitHub REST leg only; the Hugging Face leg was not exercised), OpenTimestamps (smoke: one request, keyless; single-calendar smoke only (one of three DEFAULT_CALENDARS); upgrade/verifyProof not exercised), Internet Archive Save Page Now (smoke: one request, keyless; availability API only; Save Page Now was not called) |
-| Not run live | Hugging Face Hub, Product Hunt, Podcast Index, USPTO PatentSearch, OpenReview, ORCID, SEC EDGAR (Form D), OpenAlex, Semantic Scholar (inconclusive: 200 response but the parser found no candidates; not confirmed live, needs a clean re-run), O*NET, Dropbox Sign, DeepL API Free, Twilio (text channel), Text command channel, Structured research dispatch |
+| Not run live | OpenAlex, Semantic Scholar (inconclusive: 200 response but the parser found no candidates; not confirmed live, needs a clean re-run), O*NET, Dropbox Sign, DeepL API Free, Twilio (text channel), Text command channel, Structured research dispatch |
 | Sandbox only | USCIS Case Status API (Torch) |
 
 **Model API:** none (offline keyword stand-in) (not counted as an app).
@@ -121,8 +120,10 @@ Mutation results (every mutation tried, whether it was killed or survived):
 | disable TX-verified-number (S20 must go red) | TX-verified-number | S20 | killed (went red as expected) | unknown number logged as ignored: {"sid":"SMin_0001","from":"+15559990000","body":"approve 1","command":"approve","args":[{"kind":"approve","figures":[1]}],"action":"parsed"} |
 | disable TX-confirm-irreversible (S20 must go red) | TX-confirm-irreversible | S20 | killed (went red as expected) | exactly one clarifying text across the whole run: ["I didn't understand \"ok do it\". Reply approve, deny <number> <reason>, pause until <date>, resume, next, status, stop, or start.","I don't have anything pending your yes right now."]; a confirmation was pending right after "approve all": null; more than one figure was still pending right after "approve all" (nothing applied yet): 0; pending figures dropped after "yes": 0 -> 0; exactly one confirmation text sent: 0 |
 | disable X-translation-opt-in (S24 must go red) | X-translation-opt-in | S24 | killed (went red as expected) | exactly one DeepL call: 2; no DeepL-derived draft for the not-opted-in French item: translation-draft.md; translation event for m-fr records opted_in: false, called: false: {"source":"gmail:m-fr","opted_in":true,"called":true,"chars":320} |
+| disable T-press-release + T-paid-placement (S1 must go red on the press-release trap) | T-press-release, T-paid-placement | S1 | killed (went red as expected) | Press release (gmail:m-pr): status: expected rejected, got qualifying; Press release (gmail:m-pr): eb1a_status: expected rejected, got qualifying; Press release (gmail:m-pr): never qualifying under {3}: status qualifying, criteria {3}; exactly 14 qualifying candidates: got 15: github:repo:loomwork/flakehound, github:review:r-orbit, item:captable.example|executed founder stock purchase agreement|2025-10-02, item:corpregistry.example|certificate of incorporation filed loomwork inc|2025-09-22, item:prwire.example|distributed loomwork launches flakehound 2 0|2026-08-20, item:safehub.example|congratulations your safe financing has closed|2026-03-05, judging:buildnight.example, judging:hackmesa.example, url:buildreport.example/interviews/dara-voss, url:devtoolsweekly.example/2026/03/loomwork-dara-voss-flaky-ci, url:forgeaccel.example/batches/f26, url:launchfest.example/2026/winners, url:ridgelinefellows.example/2026-fellows, url:shipitpod.example/episodes/212, url:signalnoise.example/2026/20-founders |
+| disable X-exhibition-eb1a-only (S16 must go red) | X-exhibition-eb1a-only | S16 | killed (went red as expected) | exhibition eb1a_criteria includes 'vii': ; exhibition eb1a_status qualifying: rejected; exhibition filed under 'eb1a-only/': undefined |
 | disable X-integrity-tamper-check (S22 verify must go red) | X-integrity-tamper-check | S22 | killed (went red as expected) | failed=[], passed=0 |
-| disable X-sign-both-approvals (signing must create a request after only one approval) | X-sign-both-approvals | S23 | killed (went red as expected) | state={"stage":"requested","approvalMsgId":"msg_sent_0066","requestId":"sigreq_0001"}, requests=["marco@hackmesa.example"] |
+| disable X-sign-both-approvals (signing must create a request after only one approval) | X-sign-both-approvals | S23 | killed (went red as expected) | state={"stage":"requested","approvalMsgId":"msg_sent_0066","requestId":"sigreq_0001"}, requests=["marco@hackmesa.example"], created events report recommender_confirmed=[false] |
 
 Arga backend status. Every attempt in this batch ran on Exhibit's own in-memory twins, not the hosted Arga service. `harness/arga-backend.ts` (the code that would drive real Arga twins) exists and is tested, but only against a local fake control plane and fake twin admin endpoints (`test/arga-backend.test.ts`, plain `node:http`, no network) — it has never been run against the real service, because no `ARGA_API_KEY` is present.
 
@@ -175,6 +176,7 @@ Method. worth-sending gates two kinds of message: letter requests to recommender
 | Sent (after approval) | 24 |
 | Revised then sent | 0 |
 | Held | 3 |
+| Hold rate | 3% (3 of 114) |
 | Top hold reasons | Timing is below the required minimum of 2/4. (3x) |
 | Emails in the Gmail twin without a matching send decision and approval | 0 (target 0) |
 | Proactive texts to the founder: evaluated, sent, held | 45, 42, 3 |
@@ -189,6 +191,7 @@ Changes during the build:
 | Change | Fragment | Dependent prompts listed | Scenarios re-run | Result |
 |---|---|---|---|---|
 | Accelerator acceptance counts under #1 and #2 (rule decision, 2026-09-13) | decisions-5-5 | letter-drafter, mapper, scorecard-writer | S1, S2, S3, S4, S6, S10, S11, S16 | 8/8 scenarios green |
+| Re-proved crosswalk | crosswalk | mapper, scorecard-writer | S16 | 1/1 scenarios green |
 
 ## 9. The loop, closed
 
@@ -214,33 +217,33 @@ Summed across all 84 attempt(s) in this batch (each attempt starts from an empty
 
 ## 10b. Integrity and integrations
 
-Tamper-evidence. Every filed artifact's SHA-256 is stamped with OpenTimestamps, and every approved public source page is archived with the Internet Archive. `exhibit verify` re-checks the binder against both.
+Tamper-evidence. Every stampable filed artifact's SHA-256 is stamped with OpenTimestamps, and every approved public source page is archived with the Internet Archive. `exhibit verify` re-checks filed artifact bytes against their timestamp proofs; archive results are recorded separately.
 
 | Measure | Result |
 |---|---|
-| Artifacts filed and stamped | 150 of 447 |
-| Timestamp proofs confirmed in Bitcoin (the rest pending, upgraded nightly) | 0 |
-| `exhibit verify`: untouched files passing / altered file caught | 117 / NaN |
+| Artifacts with timestamp records | 285 |
+| Latest proof status: confirmed by synthetic fixture headers / pending | 120 / 165 |
+| `exhibit verify`: untouched files passing / altered file caught | 117 / 3 |
 | Approved public sources archived | 24 of 24 |
 
 Discovery. Candidates found by source, and what became of them:
 
-| Source | Candidates | Became exhibits | Rejected by the second-identifier rule | Merged with an inbox item |
+| Source | Items observed | Accepted as candidates | Rejected by the second-identifier rule | Duplicate URLs |
 |---|---|---|---|---|
-| gdelt | 27 | 0 | 0 | 0 |
-| huggingface | 9 | 0 | 0 | 0 |
-| fake-tier2 | 9 | 0 | 0 | 0 |
-| hackernews | 9 | 0 | 0 | 0 |
-| producthunt | 9 | 0 | 0 | 0 |
-| podcastindex | 6 | 0 | 0 | 0 |
-| uspto | 6 | 0 | 0 | 0 |
-| openreview | 9 | 0 | 0 | 0 |
-| orcid | 6 | 0 | 0 | 0 |
-| edgar | 6 | 0 | 0 | 0 |
+| gdelt | 36 | 12 | 12 | 12 |
+| huggingface | 12 | 6 | 0 | 6 |
+| fake-tier2 | 9 | 6 | 3 | 0 |
+| hackernews | 27 | 3 | 18 | 6 |
+| producthunt | 27 | 0 | 27 | 0 |
+| podcastindex | 18 | 6 | 0 | 12 |
+| uspto | 18 | 3 | 9 | 6 |
+| openreview | 27 | 0 | 27 | 0 |
+| orcid | 18 | 0 | 18 | 0 |
+| edgar | 18 | 3 | 9 | 6 |
 
 Numbers from official data. Figures drawn from structured APIs versus web pages: not tracked separately in this batch's events; see section 10.
 
-Letters. Dropbox Sign requests (test mode): 21 created, 3 signed, 12 declined, and 0 created without both approvals (target 0, read back from the Dropbox Sign event log).
+Letters. Dropbox Sign requests (test mode): 6 created, 3 signed, 3 declined, 3 refused before sending by the day-mode safety gate, and 0 created without both approvals (target 0, counted from Exhibit's own signature events, which record whether the recommender's confirmation and the founder's approval were present when each request was created).
 
 ## 11. What was real and what was simulated
 
@@ -249,7 +252,7 @@ Letters. Dropbox Sign requests (test mode): 21 created, 3 signed, 12 declined, a
 | Gmail, Calendar, Drive, Sheets, Docs, GitHub, LinkedIn | Exhibit's in-memory twins, not Arga's hosted twins |
 | The founder's data | Simulated: Dara Voss is fictional. No real inbox and no real immigration data were used |
 | The outlets and programs named in her evidence | Fictional in this build: Dara Voss's outlets and programs are .example domains, so no figure attached to them is a real statistic |
-| Web research | Live calls were recorded in this batch |
+| Web research | Fixtures only in this batch; no live web research event was recorded |
 | worth-sending, uberprompt | worth-sending ran as a real local MCP server; uberprompt ran as this repository's own local stand-in in this batch (see section 8) |
 | The founder's approvals in the review Sheet | Seeded decisions in the twin for S18 |
 | The text thread | Command logic graded over the in-memory Twilio twin for S20; no live transport event was recorded in this batch |
@@ -275,16 +278,20 @@ Letters. Dropbox Sign requests (test mode): 21 created, 3 signed, 12 declined, a
 - It captures evidence; it cannot create it.
 - The model in this batch ("none (offline keyword stand-in)") is a deterministic heuristic stand-in, not Claude.
 - Claude path: docs/LLM-PATH.md does not exist in this repo, so no documented Claude-path status (heuristic stand-in vs. request-shape testing vs. live) can be reported here — not run / not documented.
-- Security review residual items (docs/SECURITY-REVIEW.md): still open, no patch applied yet: H1 (`reports/` is not gitignored and can publish eval-run JSON to a public repo on the first commit); M1 (raw integration error bodies (USCIS, Dropbox Sign, DeepL, Twilio) can reach the trace log unredacted); M2 (the Twilio webhook has no request body size cap, ahead of its signature check); L1 (inbound/outbound SMS body is stored unredacted in the ledger).
+- Security review (docs/SECURITY-REVIEW.md): H1, M1, M2 and L1 are marked fixed; no open findings remain in that review.
 
 ## 13. Reproduce
 
 ```bash
 git clone https://github.com/mehek-builds/exhibit && cd exhibit && npm ci
-npx tsx src/cli.ts eval --attempts 3     # runs the scenario matrix and writes reports/eval-latest.json
-npx tsx src/cli.ts brief                 # regenerates this brief from reports/eval-latest.json
-npx tsx src/cli.ts verify                # re-checks every binder file against its hash and OpenTimestamps proof
+npm run demo                                    # full synthetic year, exported to out/demo
+npm run eval -- --attempts 3                    # in-memory twins, seeded and graded from twin state
+npm run mutate                                  # proves safety scenarios go red when their rules are disabled
+npm run brief                                   # regenerates this brief from the latest reports
+npm run verify -- --demo out/demo               # expected exit 1: names the demo artifact altered on purpose
 ```
+
+For a live binder, copy `.env.example` to `.env`, provide the Google, GitHub, owner-email and profile values plus any optional integration keys, run `npm run exhibit -- run --live`, then run `npm run verify` without `--demo`.
 
 ## 14. What this build hands back to each platform
 

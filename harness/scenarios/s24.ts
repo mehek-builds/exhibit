@@ -38,7 +38,7 @@ function exhibitBySource(ctx: ScenarioContext, id: string) {
 export const S24: Scenario = {
   id: 'S24',
   title: 'Draft translation: redacted text only, opt-in gate holds',
-  core: false,
+  core: true,
   profile: PROFILE,
   seed: () => seed({ gmail: [M_ES_WITH_ID, M_FR, ...E.buildnight.gmail], calendar: E.buildnight.calendar }),
   play: async (ctx) => {

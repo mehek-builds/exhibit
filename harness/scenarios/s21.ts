@@ -109,7 +109,7 @@ export const S21: Scenario = {
     const fakeTier2 = fakeTier2Adapter();
     // env.deps is the same object closed over by env.run(): setting extensions here wires the
     // discovery hook into this run without any change to createHarnessEnv (see final report).
-    ctx.env.deps.extensions = [createDiscoveryExtension({ adapters: [gdelt, hf, fakeTier2], alwaysRun: true })];
+    ctx.env.deps.extensions = [createDiscoveryExtension({ adapters: [gdelt, hf, fakeTier2], alwaysRun: true, transportKind: 'fixture' })];
     await ctx.env.run();
   },
   grade(ctx: ScenarioContext): GradeCheck[] {

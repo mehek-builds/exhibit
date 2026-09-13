@@ -1,5 +1,5 @@
 import type { AgentExtension, ExtensionContext } from '../agent.js';
-import type { DiscoveredItem, DiscoveryAdapter } from '../integrations/types.js';
+import type { DiscoveredItem, DiscoveryAdapter, HttpTransport } from '../integrations/types.js';
 import { discoveryQuery, toSourceItem } from '../integrations/types.js';
 import { registerDiscoveryClassifier } from '../rules/structured.js';
 import type { SourceItem } from '../types.js';
@@ -16,11 +16,15 @@ const DEFAULT_CADENCE_DAYS = 7;
 
 export interface DiscoveryExtensionOptions {
   adapters: DiscoveryAdapter[];
+  /** Transport provenance written to the reliability ledger. Live is the safe default. */
+  transportKind?: HttpTransport['kind'];
   /** Live cadence, days between runs per source. Default 7. */
   cadenceDays?: number;
   /** Harness mode: ignore cadence and run every time. */
   alwaysRun?: boolean;
 }
+
+export type DiscoveryOutcome = 'second_identifier_reject' | 'duplicate' | 'candidate';
 
 function dueToRun(lastRunIso: string | null, now: Date, cadenceDays: number): boolean {
   if (!lastRunIso) return true;
@@ -67,7 +71,7 @@ export function createDiscoveryExtension(opts: DiscoveryExtensionOptions): Agent
           run_id: runId,
           trace_id: trace.traceId,
           kind: 'integration_call',
-          detail: { integration: source, op: 'discover', ok: true, transport: 'live', status: limited ? 'limited' : 'ok' },
+          detail: { integration: source, op: 'discover', ok: true, transport: opts.transportKind ?? 'live', status: limited ? 'limited' : 'ok' },
           at: now.toISOString(),
         });
 
@@ -82,7 +86,7 @@ export function createDiscoveryExtension(opts: DiscoveryExtensionOptions): Agent
               run_id: runId,
               trace_id: trace.traceId,
               kind: 'discovery',
-              detail: { source, external_id: found.externalId, url: found.url, outcome: 'second_identifier_reject' },
+              detail: { source, external_id: found.externalId, url: found.url, outcome: 'second_identifier_reject' satisfies DiscoveryOutcome },
               at: now.toISOString(),
             });
             trace.span('discovery.second_identifier_reject', { source, external_id: found.externalId, url: found.url }, { names, second });
@@ -95,7 +99,7 @@ export function createDiscoveryExtension(opts: DiscoveryExtensionOptions): Agent
             run_id: runId,
             trace_id: trace.traceId,
             kind: 'discovery',
-            detail: { source, external_id: found.externalId, url: found.url, outcome: isDuplicate ? 'duplicate' : 'candidate' },
+            detail: { source, external_id: found.externalId, url: found.url, outcome: (isDuplicate ? 'duplicate' : 'candidate') satisfies DiscoveryOutcome },
             at: now.toISOString(),
           });
 

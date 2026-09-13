@@ -38,7 +38,13 @@ export interface CommandParser {
 
 // ---------------- HeuristicCommandParser: deterministic, used offline (and in S20) ----------------
 
-const INJECTION_RE = /\b(ignore|disregard|forget)\b[^.]{0,40}\b(your |the |previous |prior |these )?(rules?|instructions?|constraints?|guardrails?)\b/i;
+export const INJECTION_RE = /\b(ignore|disregard|forget)\b[^.]{0,40}\b(your |the |previous |prior |these )?(rules?|instructions?|constraints?|guardrails?)\b/i;
+
+/** TX-data-not-instructions guard, shared by every parser (heuristic and model-backed alike): an
+ * injection-shaped text is data, never a command, regardless of which parser is wired. */
+export function isInjectionShaped(text: string): boolean {
+  return INJECTION_RE.test(text.trim());
+}
 
 const KEYWORD_RE = /\b(approve|deny|pause|resume|add[ _]evidence|next|status|stop|start|yes)\b/gi;
 
@@ -112,7 +118,7 @@ function unclear(question: string): ParsedCommand {
   return { kind: 'unclear', question };
 }
 
-function parseSegment(segment: string, ctx: ParseContext): ParsedCommand {
+function parseSegment(segment: string, ctx: ParseContext, fullText: string): ParsedCommand {
   const lower = segment.toLowerCase();
 
   if (/^approve/i.test(segment)) {
@@ -138,7 +144,10 @@ function parseSegment(segment: string, ctx: ParseContext): ParsedCommand {
     return { kind: 'pause', until };
   }
 
-  if (/^resume/i.test(segment)) return { kind: 'resume' };
+  if (/^resume/i.test(segment)) {
+    if (!START_INTENT_RE.test(fullText) || STOP_INTENT_RE.test(fullText)) return unclear(`I wasn't able to confirm everything in "${fullText.trim()}". Could you rephrase it as separate short commands (e.g. "approve 1", "deny 2 <reason>", "pause until <date>")?`);
+    return { kind: 'resume' };
+  }
   if (/^add[ _]evidence/i.test(segment)) {
     const description = segment.replace(/^add[ _]evidence\b[:,-]?\s*/i, '').trim();
     if (!description) return unclear('What evidence should I look for?');
@@ -147,8 +156,15 @@ function parseSegment(segment: string, ctx: ParseContext): ParsedCommand {
   if (/^next\b/.test(lower)) return { kind: 'next' };
   if (/^status\b/.test(lower)) return { kind: 'status' };
   if (/^stop\b/.test(lower)) return { kind: 'stop' };
-  if (/^start\b/.test(lower)) return { kind: 'start' };
-  if (/^yes\b/.test(lower)) return { kind: 'yes' };
+  if (/^start\b/.test(lower)) {
+    if (!START_INTENT_RE.test(fullText) || STOP_INTENT_RE.test(fullText)) return unclear(`I wasn't able to confirm everything in "${fullText.trim()}". Could you rephrase it as separate short commands (e.g. "approve 1", "deny 2 <reason>", "pause until <date>")?`);
+    return { kind: 'start' };
+  }
+  if (/^yes\b/.test(lower)) {
+    if (!AFFIRM_RE.test(fullText) || NEGATION_RE.test(fullText) || hasTrailingHedgePunctuation(fullText)) return unclear(`I wasn't able to confirm everything in "${fullText.trim()}". Could you rephrase it as separate short commands (e.g. "approve 1", "deny 2 <reason>", "pause until <date>")?`);
+    if (PARTIAL_SELECTION_RE.test(fullText)) return unclear('To approve only some figures, reply approve <numbers>; to approve all, reply yes.');
+    return { kind: 'yes' };
+  }
   return unclear(`I didn't understand "${segment}".`);
 }
 
@@ -160,10 +176,10 @@ export class HeuristicCommandParser implements CommandParser {
     if (!trimmed) return [];
     // TX-data-not-instructions: an embedded instruction is treated as data and produces no command,
     // and no reply (E54); it is not the same case as a genuinely unclear text.
-    if (INJECTION_RE.test(trimmed)) return [];
+    if (isInjectionShaped(trimmed)) return [];
 
     const segments = splitSegments(trimmed);
-    if (segments.length) return segments.map((s) => parseSegment(s, ctx));
+    if (segments.length) return segments.map((s) => parseSegment(s, ctx, trimmed));
 
     if (ADD_EVIDENCE_RE.test(trimmed)) return [{ kind: 'add_evidence', description: trimmed }];
 
@@ -194,6 +210,10 @@ export class AnthropicCommandParser implements CommandParser {
   }
 
   async parse(text: string, ctx: ParseContext): Promise<ParsedCommand[]> {
+    // TX-data-not-instructions: applied identically to both parsers (heuristic and model-backed),
+    // so an injection-shaped text never reaches the model and never yields a command either way.
+    if (isInjectionShaped(text)) return [];
+
     const system = renderPrompt(this.graph, 'text-commands');
     const prompt = [
       '<text>',
@@ -211,6 +231,122 @@ export class AnthropicCommandParser implements CommandParser {
       output: Output.object({ schema: ANTHROPIC_COMMAND_SCHEMA }),
       maxRetries: 1,
     });
-    return output.commands;
+
+    // Defense in depth: re-validate the structured output against CommandSchema (zod already
+    // enforces this on the way out of Output.object, but a future output/schema drift must not
+    // silently pass through).
+    const schemaValid = output.commands.filter((c) => {
+      try {
+        CommandSchema.parse(c);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+
+    // Every command must be grounded in the text: no capped count (a single "deny" keyword can
+    // legitimately yield two deny commands; "pause ... approve" must keep both). Instead, each
+    // command's kind must be implied by a keyword/synonym present in the text, and every figure
+    // number it references must actually appear in the text. Ungrounded output -> clarify and
+    // apply nothing, rather than silently dropping or letting the model invent facts.
+    const deduped: ParsedCommand[] = [];
+    const seen = new Set<string>();
+    for (const c of schemaValid) {
+      const key = JSON.stringify(c);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(c);
+    }
+
+    for (const c of deduped) {
+      if (!isGrounded(c, text, ctx.now)) {
+        if (c.kind === 'yes' && PARTIAL_SELECTION_RE.test(text)) {
+          return [unclear('To approve only some figures, reply approve <numbers>; to approve all, reply yes.')];
+        }
+        return [unclear(`I wasn't able to confirm everything in "${text.trim()}". Could you rephrase it as separate short commands (e.g. "approve 1", "deny 2 <reason>", "pause until <date>")?`)];
+      }
+    }
+
+    return deduped;
   }
+}
+
+// `yes`, `start` and `resume` are state-changing/irreversible in effect (yes applies a staged
+// confirmation -- e.g. a bulk figure approval, constraint 13: figure approval must come from the
+// founder; start/resume undo a STOP/pause, constraint 15: never guess on unclear text) and so are
+// grounded like the other kinds below, but on intent rather than a literal keyword: the text must
+// express the right sentiment and must NOT contain a conflicting negation/hesitation or stop intent.
+// Only status and next stay ungrounded -- they are read-only and cannot misapply anything.
+const KIND_SYNONYM_RE: Partial<Record<ParsedCommand['kind'], RegExp>> = {
+  approve: /\bapprove/i,
+  deny: /\bdeny/i,
+  pause: /\b(pause|traveling|travelling|no asks?)\b/i,
+  add_evidence: /\b(add[ _]evidence|i\s+(judged|spoke|presented|published|wrote|reviewed|interviewed|won|received|got|gave|attended|was)\b)/i,
+  stop: /\bstop\b/i,
+};
+
+const AFFIRM_RE = /\b(yes|y|yep|yeah|confirm(?:ed)?|ok(?:ay)?|sure|go\s+ahead|do\s+it)\b/i;
+// Hesitation, deferral or reversal: any of these anywhere in the text blocks a `yes` grounding,
+// even alongside an affirmative token (F4: "sure, later" is not an unhedged yes).
+const NEGATION_RE = /\b(no|not|don'?t|wait|hold\s+on|hold|stop|cancel|never\s?mind|nvm|later|think\s+about\s+it|let\s+me\s+think|maybe|perhaps|unsure|hmm+|actually|nah|nope|on\s+second\s+thought)\b/i;
+
+// G3 (constraint 13, E53): a `yes` that carries an exception, limit or partial selection ("yes
+// except the second one", "yes but only 1 and 2") must not confirm the whole staged approve-all /
+// multi-figure set -- only an unhedged, unqualified yes may ground. Any exception/limit keyword,
+// or any digit/ordinal (which signals the reply is picking out specific figures rather than
+// accepting the staged set), blocks the grounding and falls back to the clarifying question.
+export const PARTIAL_SELECTION_RE = /\b(except|excluding|exclude|but|only|just|other\s+than|apart\s+from|not\s+the|without|minus|skip|leave\s+out|drop|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b|\d/i;
+
+/** Trailing "..." or "?" on an otherwise affirmative text ("ok?", "sure...") reads as a hedge, not
+ * an unhedged confirmation. */
+function hasTrailingHedgePunctuation(text: string): boolean {
+  const trimmed = text.trim();
+  return /\.\.\.$/.test(trimmed) || /\?$/.test(trimmed);
+}
+
+const START_INTENT_RE = /\b(start|resume|unpause)\b|i'?m\s+back|turn\s+texts?\s+back\s+on|you\s+can\s+text\s+me\s+again/i;
+const STOP_INTENT_RE = /\bstop\b|\bdon'?t\b|no\s+more|\bpause\b|\bquiet\b|leave\s+me\s+alone|for\s+a\s+while|back\s+off/i;
+
+/** State-changing/irreversible claim in `description` (a URL or a distinctive word/phrase) must be
+ * traceable back to the source text -- the model may summarize but not invent evidence. */
+function descriptionGrounded(description: string, text: string): boolean {
+  const urls = description.match(/https?:\/\/\S+/g) ?? [];
+  if (urls.length) return urls.every((u) => text.includes(u));
+  const words = description.toLowerCase().match(/[a-z]{4,}/g) ?? [];
+  const textLower = text.toLowerCase();
+  return words.length === 0 || words.some((w) => textLower.includes(w));
+}
+
+/** A command is grounded when, for state-changing/irreversible kinds, its kind is implied by a
+ * keyword/synonym present in the text and every fact it carries (figure numbers, deny's reason,
+ * pause's date, add_evidence's claim) is actually derivable from the text. Read-only/harmless kinds
+ * (status, next, resume, start, yes) carry no grounding requirement -- see the note on
+ * KIND_SYNONYM_RE above. */
+const GROUNDED_KINDS = new Set<ParsedCommand['kind']>(['approve', 'deny', 'pause', 'stop', 'add_evidence', 'yes', 'start', 'resume']);
+
+function isGrounded(cmd: ParsedCommand, text: string, now: Date): boolean {
+  if (!GROUNDED_KINDS.has(cmd.kind)) return true;
+
+  if (cmd.kind === 'yes') return AFFIRM_RE.test(text) && !NEGATION_RE.test(text) && !hasTrailingHedgePunctuation(text) && !PARTIAL_SELECTION_RE.test(text);
+  if (cmd.kind === 'start' || cmd.kind === 'resume') return START_INTENT_RE.test(text) && !STOP_INTENT_RE.test(text);
+
+  const re = KIND_SYNONYM_RE[cmd.kind];
+  if (re && !re.test(text)) return false;
+
+  const numbersInText = new Set(parseNumbers(text));
+  if (cmd.kind === 'approve') {
+    if (cmd.figures === 'all') return true;
+    return cmd.figures.every((n) => numbersInText.has(n));
+  }
+  if (cmd.kind === 'deny') {
+    return numbersInText.has(cmd.figure) && descriptionGrounded(cmd.reason, text);
+  }
+  if (cmd.kind === 'pause') {
+    const derived = parseRelativeDate(text, now);
+    return derived !== null && derived === cmd.until;
+  }
+  if (cmd.kind === 'add_evidence') {
+    return descriptionGrounded(cmd.description, text);
+  }
+  return true;
 }

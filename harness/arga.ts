@@ -19,6 +19,16 @@ import type { FounderProfile } from '../src/types.js';
  * returns HTML. The API host is api.argalabs.com (verified 2026-09-13). */
 export const ARGA_API_BASE_URL = 'https://api.argalabs.com';
 
+// PRD 7.1 lists 8 twins including Twilio (the text channel, S20), but the installed arga-sdk's
+// `KnownTwinName` union (node_modules/arga-sdk/dist/index.d.ts) has no "twilio" entry -- box,
+// discord, dropbox, github, gitlab, gmail, google_calendar, google_drive, hubspot, jira, linear,
+// linkedin, notion, postgres, salesforce, slack, stripe, unified, unstructured, waterfall. Since
+// `TwinName` is `KnownTwinName | (string & {})`, an unlisted id would still typecheck and could be
+// requested, but the SDK gives no confirmation such a twin actually exists on the hosted service --
+// requesting an unsupported name risks a silent no-op or a provisioning error we can't distinguish
+// from a real outage. So it's left out of the default set rather than guessed at; S20 (the text
+// channel) runs against Exhibit's own in-memory Twilio twin (harness/arga-seed.ts) in this harness
+// regardless of DEFAULT_TWINS, so the scenario is not blocked by this gap.
 export const DEFAULT_TWINS: string[] = ['gmail', 'google-calendar', 'google-drive', 'google-docs', 'google-sheets', 'github', 'linkedin'];
 
 export interface ArgaRun {

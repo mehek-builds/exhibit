@@ -233,9 +233,27 @@ describe('AnthropicCommandParser: request shape and schema-valid output (6.13)',
     }));
     const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
     const parser = new MockedParser('unused-key', graph);
-    const out = await parser.parse('approve 1. deny 2, that\'s the 2019 rate', { now: NOW, pendingFigureNumbers: [1, 2, 3] });
+    // The model output must be grounded in the text: every figure it names appears there.
+    const out = await parser.parse('approve 1 and 2. deny 3, that\'s a stale rate', { now: NOW, pendingFigureNumbers: [1, 2, 3] });
     for (const c of out) expect(() => CommandSchema.parse(c)).not.toThrow();
     expect(out).toEqual([{ kind: 'approve', figures: [1, 2] }, { kind: 'deny', figure: 3, reason: 'stale rate' }]);
+    vi.doUnmock('@ai-sdk/anthropic');
+    vi.resetModules();
+  });
+
+  it('parses the PRD 6.13 example with a grounded mocked model output', async () => {
+    vi.resetModules();
+    vi.doMock('@ai-sdk/anthropic', () => ({
+      createAnthropic: () => (_modelId: string) =>
+        mockModel(
+          textResult({ commands: [{ kind: 'approve', figures: [1] }, { kind: 'deny', figure: 2, reason: "that's the 2019 rate" }] }),
+        ),
+    }));
+    const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+    const parser = new MockedParser('unused-key', graph);
+    const out = await parser.parse("approve 1. deny 2, that's the 2019 rate", { now: NOW, pendingFigureNumbers: [1, 2] });
+    for (const c of out) expect(() => CommandSchema.parse(c)).not.toThrow();
+    expect(out).toEqual([{ kind: 'approve', figures: [1] }, { kind: 'deny', figure: 2, reason: "that's the 2019 rate" }]);
     vi.doUnmock('@ai-sdk/anthropic');
     vi.resetModules();
   });

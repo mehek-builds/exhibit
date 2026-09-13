@@ -14,12 +14,36 @@ export function slug(text: string, max = 48): string {
     .replace(/-+$/g, '');
 }
 
+const EMAIL_SHAPE = /^[^@\s<>]+@[^@\s<>]+\.[^@\s<>]+$/;
+
 export function domainOf(value: string | null | undefined): string | null {
   if (!value) return null;
-  const at = value.lastIndexOf('@');
-  if (at >= 0) return value.slice(at + 1).replace(/[>\s]+$/, '').toLowerCase();
+  // A header-style address ("Name <addr@host>") reduces to the bracketed address first.
+  const bracketed = value.match(/<([^<>\s]+@[^<>\s]+)>\s*$/);
+  const trimmed = (bracketed ? bracketed[1]! : value).trim().replace(/[>\s]+$/, '');
+  const isUrlLike = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) || trimmed.startsWith('//');
+
+  // URL-like input (has a scheme, or is protocol-relative): always parse as a URL, never as an
+  // email, even if it contains "@" (e.g. userinfo `https://bls.gov@evil.com/` must read as evil.com).
+  if (isUrlLike) {
+    try {
+      const absolute = trimmed.startsWith('//') ? `https:${trimmed}` : trimmed;
+      return new URL(absolute).hostname.toLowerCase().replace(/^www\./, '');
+    } catch {
+      return null;
+    }
+  }
+
+  // Not URL-like: treat as an email only if it has the shape of one (single "@", dotted domain).
+  if (EMAIL_SHAPE.test(trimmed)) {
+    const at = trimmed.lastIndexOf('@');
+    return trimmed.slice(at + 1).toLowerCase();
+  }
+
+  // Last resort: bare strings that happen to already be a valid absolute URL without a
+  // recognized scheme prefix check above (preserves prior behavior for edge inputs).
   try {
-    return new URL(value).hostname.toLowerCase().replace(/^www\./, '');
+    return new URL(trimmed).hostname.toLowerCase().replace(/^www\./, '');
   } catch {
     return null;
   }

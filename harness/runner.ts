@@ -45,7 +45,6 @@ const METRICS_EVENT_KINDS = [
   'figure_hallucination',
   'source_blocked',
 ] as const;
-const MAX_EVENTS_PER_KIND = 25;
 
 export interface AttemptMetrics {
   eventCounts: Record<string, number>;
@@ -233,7 +232,7 @@ export async function runScenarioAttempt(s: Scenario, attempt: number, opts: Mat
     for (const kind of METRICS_EVENT_KINDS) {
       const rows = env.ledger.events({ kind });
       eventCounts[kind] = rows.length;
-      for (const r of rows.slice(0, MAX_EVENTS_PER_KIND)) events.push({ kind: r.kind, detail: r.detail, at: r.at });
+      for (const r of rows) events.push({ kind: r.kind, detail: r.detail, at: r.at });
     }
     metrics = {
       eventCounts,
@@ -421,8 +420,16 @@ async function runSignBothApprovalsMutation(disabled: string[]): Promise<{ caugh
     const state = JSON.parse(env.ledger.get(`sign:${id}`) ?? '{}') as { requestId?: string; stage?: string };
     const requests = fake.state().requests;
     const requestExists = !!state.requestId || requests.some((req) => req.signerEmail === r.email);
-    // caught === true means the guard held (no request without both approvals) -- the mutation survived.
-    return { caught: !requestExists, detail: `state=${JSON.stringify(state)}, requests=${JSON.stringify(requests.map((req) => req.signerEmail))}` };
+    // The brief's "created without both approvals" count must see this bypass too: the created
+    // event has to record the missing recommender confirmation rather than claim both approvals.
+    const created = env.ledger.events({ kind: 'signature' }).filter((e) => e.detail.status === 'created' && e.detail.letter_id === id);
+    const metricHonest = created.length > 0 && created.every((e) => e.detail.recommender_confirmed === false);
+    // caught === true means the mutation survived: the guard held (no request), or a request went out
+    // but the signature event claimed both approvals, so the reliability brief would under-report it.
+    return {
+      caught: !requestExists || !metricHonest,
+      detail: `state=${JSON.stringify(state)}, requests=${JSON.stringify(requests.map((req) => req.signerEmail))}, created events report recommender_confirmed=${JSON.stringify(created.map((e) => e.detail.recommender_confirmed))}`,
+    };
   } finally {
     await env.close();
   }
@@ -432,8 +439,10 @@ async function runSignBothApprovalsMutation(disabled: string[]): Promise<{ caugh
 export async function mutationCheck(opts: { attempts?: number } = {}): Promise<{ mutations: { name: string; disabled: string[]; scenario: string; killed: boolean; detail: string }[] }> {
   const attemptCount = opts.attempts ?? 1;
   const all = loadScenarios();
+  const s1 = all.find((s) => s.id === 'S1');
   const s2 = all.find((s) => s.id === 'S2');
   const s3 = all.find((s) => s.id === 'S3');
+  const s16 = all.find((s) => s.id === 'S16');
   const s20 = all.find((s) => s.id === 'S20');
   const s21 = all.find((s) => s.id === 'S21');
   const s23 = all.find((s) => s.id === 'S23');
@@ -461,6 +470,23 @@ export async function mutationCheck(opts: { attempts?: number } = {}): Promise<{
   await run('disable TX-verified-number (S20 must go red)', s20, ['TX-verified-number']);
   await run('disable TX-confirm-irreversible (S20 must go red)', s20, ['TX-confirm-irreversible']);
   await run('disable X-translation-opt-in (S24 must go red)', s24, ['X-translation-opt-in']);
+  // E11 (PRD 9): a rejected paid placement / press release must not slip through as qualifying #3
+  // press. S1's ground truth (gmail:m-pr) asserts it is a trap that must never qualify under #3;
+  // disabling both trap rules lets the heuristic model's default press_about mapping
+  // (C3-press-about, qualifying) take over, so S1 must go red.
+  await run('disable T-press-release + T-paid-placement (S1 must go red on the press-release trap)', s1, ['T-press-release', 'T-paid-placement']);
+  // E36 (PRD 9): an exhibition/display item counts only for EB-1A (vii), never O-1A. S16 asserts
+  // eb1a_criteria includes 'vii' and O-1A status is rejected for the exhibition candidate;
+  // disabling the rule removes that EB-1A-only mapping entirely (the heuristic model has no
+  // 'exhibition' case, so it falls through to R-not-evidence), so S16 must go red.
+  await run('disable X-exhibition-eb1a-only (S16 must go red)', s16, ['X-exhibition-eb1a-only']);
+  // E12 (podcast -> #3) and E14 (award with no stated selection criteria -> needs_attorney) are
+  // decided inside the offline heuristic model stand-in (src/models/heuristic.ts: C3-podcast,
+  // C1-no-selection-criteria), not in src/rules/explicit.ts, so neither rule is gated by
+  // RuleOptions.disabled and there is no mutation lever for them today (heuristic.ts is outside
+  // this file's ownership, so that gate can't be added here). Real coverage for both is added as
+  // focused checks in gradeS1 (harness/scenarios.ts) asserting the exact rule_id on gmail:m-pod
+  // and gmail:m-rising, which fail if either mapping regresses.
   void s23; // S23's own three recommenders don't isolate X-sign-both-approvals cleanly; see the bespoke check below.
 
   {

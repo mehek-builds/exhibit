@@ -4,6 +4,7 @@ import { mapping as mkMapping, O1_TO_EB1 } from '../rules/explicit.js';
 import type { Check, Classification, FounderProfile, Mapping, Person, SourceItem, SourceRef, VerifiedItem } from '../types.js';
 import { domainOf, hostMatches, isoDay, normalizeTitle, normalizeUrl, uniq } from '../util.js';
 import { parseAddress } from './intake.js';
+import { parseInviteActionDate, type ActionDate } from './inviteDate.js';
 
 // Verifier (PRD 6.5): original date, issuer from the domain, proof of service for criterion 4,
 // cross-source merge. Any failed check downgrades to needs_attorney with the check named.
@@ -66,6 +67,9 @@ interface JudgingCase {
   served: { ref: SourceRef; kind: 'calendar' | 'thank_you' | 'certificate'; date: string | null } | null;
   cancelled: boolean;
   eventDate: string | null;
+  /** For an unanswered invite only: the reply deadline or event date parsed from the invite's own
+   * text (PRD 4.1/6.13 time-sensitive nudge). Never used for `event_date` / date-accuracy scoring. */
+  actionDate: ActionDate | null;
   student: boolean;
   submissions: number | null;
   quote: string;
@@ -87,7 +91,7 @@ function submissionsIn(text: string): number | null {
 function loadCase(ledger: Ledger, domain: string): JudgingCase {
   const raw = ledger.get(`judging:${domain}`);
   if (raw) return JSON.parse(raw) as JudgingCase;
-  return { domain, title: '', invite: null, accepted: false, declined: false, served: null, cancelled: false, eventDate: null, student: false, submissions: null, quote: '', sources: [], people: [], primaryItemId: null };
+  return { domain, title: '', invite: null, accepted: false, declined: false, served: null, cancelled: false, eventDate: null, actionDate: null, student: false, submissions: null, quote: '', sources: [], people: [], primaryItemId: null };
 }
 
 function founderReply(msgs: GmailMessage[], invite: { threadId?: string; subject: string }): 'accepted' | 'declined' | null {
@@ -166,6 +170,7 @@ export function verify(candidates: Candidate[], itemsById: Map<string, SourceIte
       jc.title ||= c.item.title;
       jc.quote ||= c.cls.quote;
       jc.primaryItemId ??= { app: c.item.app, id: c.item.id };
+      jc.actionDate ??= parseInviteActionDate(text, c.item.date);
     } else {
       const kind = /certificate/i.test(text) ? 'certificate' : 'thank_you';
       jc.served ??= { ref: refOf(c.item), kind, date: c.item.date };

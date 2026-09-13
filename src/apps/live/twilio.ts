@@ -4,7 +4,8 @@ import type { HttpTransport } from '../../integrations/types.js';
 import { FetchTransport } from '../../integrations/types.js';
 
 // Live Twilio Programmable Messaging adapter (PRD 6.13, 7.3): SMS in the Arga twin, WhatsApp
-// Sandbox live. POST/GET against api.twilio.com with HTTP basic auth (Account SID + auth token);
+// Sandbox live. POST/GET against api.twilio.com with HTTP basic auth: an API key (SID + secret)
+// when set, else the Account SID + auth token. The request URL always names the Account SID.
 // `transport` is swappable for a FixtureTransport in tests, same pattern as src/apps/live/google.ts.
 //
 // Trial limits this adapter must respect at call sites, not enforce itself (PRD 6.13):
@@ -15,10 +16,19 @@ import { FetchTransport } from '../../integrations/types.js';
 
 export interface TwilioApiOptions {
   accountSid: string;
-  authToken: string;
+  /** Account auth token. Required unless `apiKeySid` and `apiKeySecret` are both set. */
+  authToken?: string;
+  /** API key (SK...) and its secret; used for basic auth in place of the auth token when both are set. */
+  apiKeySid?: string;
+  apiKeySecret?: string;
   /** 'whatsapp:+14155238886' for the Sandbox, or a bare E.164 number for SMS. */
   sender: string;
   transport?: HttpTransport;
+  /** Minimum gap enforced between two `send()` calls, honoring the trial rate limit above. Default 3000ms. */
+  minSendIntervalMs?: number;
+  /** Injectable clock/sleep so tests can assert the wait without actually waiting. */
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 function basicAuth(sid: string, token: string): string {
@@ -64,22 +74,57 @@ function mapMessage(m: TwilioMessageJson): TextMessage {
 export function createTwilioApi(opts: TwilioApiOptions): TwilioApi {
   const transport = opts.transport ?? new FetchTransport();
   const base = `https://api.twilio.com/2010-04-01/Accounts/${opts.accountSid}`;
-  const auth = basicAuth(opts.accountSid, opts.authToken);
+  let auth: string;
+  if (opts.apiKeySid && opts.apiKeySecret) auth = basicAuth(opts.apiKeySid, opts.apiKeySecret);
+  else if (opts.authToken) auth = basicAuth(opts.accountSid, opts.authToken);
+  else throw new Error('createTwilioApi: set authToken, or both apiKeySid and apiKeySecret');
+  const minSendIntervalMs = opts.minSendIntervalMs ?? 3000;
+  const now = opts.now ?? (() => Date.now());
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let lastSendAt: number | null = null;
+  // Serialize sends through a promise chain: concurrent callers queue behind each other so the
+  // throttle's read-then-write of lastSendAt is never racing another send. Each link awaits its
+  // own throttle wait + request; a failure in one send must not break the chain for later sends,
+  // so the chain link always resolves (never rejects) and the underlying error/result is
+  // re-thrown/returned from the per-caller wrapper instead.
+  let sendChain: Promise<void> = Promise.resolve();
+
+  async function doSend(message: { to: string; body: string }): Promise<{ sid: string }> {
+    // Trial rate limit (~1 message per 3s per sender, see module doc above): never enforced by
+    // Twilio's own client, so this adapter self-throttles at the send path.
+    if (lastSendAt !== null) {
+      const elapsed = now() - lastSendAt;
+      if (elapsed < minSendIntervalMs) await sleep(minSendIntervalMs - elapsed);
+    }
+    lastSendAt = now();
+
+    const to = message.to.startsWith('whatsapp:') || opts.sender.startsWith('whatsapp:') ? (message.to.startsWith('whatsapp:') ? message.to : `whatsapp:${message.to}`) : message.to;
+    const res = await transport.request({
+      method: 'POST',
+      url: `${base}/Messages.json`,
+      headers: { authorization: auth, 'content-type': 'application/x-www-form-urlencoded' },
+      body: form({ To: to, From: opts.sender, Body: message.body }),
+    });
+    if (res.status >= 300) throw new Error(`twilio send failed: ${res.status} ${safeErrorBody(res.body)}`);
+    const parsed = JSON.parse(res.body) as TwilioMessageJson;
+    return { sid: parsed.sid };
+  }
 
   return {
     sender: opts.sender,
 
     async send(message) {
-      const to = message.to.startsWith('whatsapp:') || opts.sender.startsWith('whatsapp:') ? (message.to.startsWith('whatsapp:') ? message.to : `whatsapp:${message.to}`) : message.to;
-      const res = await transport.request({
-        method: 'POST',
-        url: `${base}/Messages.json`,
-        headers: { authorization: auth, 'content-type': 'application/x-www-form-urlencoded' },
-        body: form({ To: to, From: opts.sender, Body: message.body }),
+      const previous = sendChain;
+      let release!: () => void;
+      sendChain = new Promise<void>((resolve) => {
+        release = resolve;
       });
-      if (res.status >= 300) throw new Error(`twilio send failed: ${res.status} ${safeErrorBody(res.body)}`);
-      const parsed = JSON.parse(res.body) as TwilioMessageJson;
-      return { sid: parsed.sid };
+      await previous;
+      try {
+        return await doSend(message);
+      } finally {
+        release();
+      }
     },
 
     async listInbound() {

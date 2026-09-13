@@ -10,6 +10,7 @@ import { redactText } from '../pipeline/redact.js';
 
 const CONVERSATION_GAP_MS = 30 * 60 * 1000;
 import type { CommandParser, ParsedCommand } from './commands.js';
+import { PARTIAL_SELECTION_RE } from './commands.js';
 
 // The two-way text channel (PRD 6.13): approve, deny, pause and check status by SMS, exactly as the
 // Sheet and worth-sending would allow -- never more (constraint 15). Every inbound and outbound
@@ -147,7 +148,7 @@ function logTextIn(ctx: ExtensionContext, msg: TextMessage, command: string | nu
   deps.ledger.event({ run_id: runId, trace_id: trace.traceId, kind: 'text_in', detail: { sid: msg.sid, from: msg.from, body: redactText(msg.body).text, command, args, action }, at: now.toISOString() });
 }
 
-async function applyCommand(cmd: ParsedCommand, ctx: ExtensionContext, twilio: TwilioApi): Promise<void> {
+async function applyCommand(cmd: ParsedCommand, ctx: ExtensionContext, twilio: TwilioApi, rawText: string): Promise<void> {
   const { deps } = ctx;
   const to = deps.profile.phone;
   if (!to) return;
@@ -214,6 +215,13 @@ async function applyCommand(cmd: ParsedCommand, ctx: ExtensionContext, twilio: T
     }
 
     case 'yes': {
+      // G3 defense-in-depth: a `yes` whose raw text still carries an exception/limit/partial
+      // selection must never apply a staged approve-all/multi-figure confirmation, even if it
+      // somehow reached here ungrounded (e.g. a parser regression). Ask, apply nothing.
+      if (PARTIAL_SELECTION_RE.test(rawText)) {
+        await send('To approve only some figures, reply approve <numbers>; to approve all, reply yes.', 'clarify');
+        return;
+      }
       const raw = deps.ledger.get('text_pending_confirm');
       if (!raw) {
         await send("I don't have anything pending your yes right now.", 'clarify');
@@ -257,9 +265,13 @@ async function handleMessage(ctx: ExtensionContext, twilio: TwilioApi, parser: C
     return;
   }
 
+  // Privacy: the parser (model-backed or heuristic) only ever sees redacted text -- the raw
+  // msg.body reaches nothing but the ledger's own redacted copy below (section 6.2).
+  const redactedBody = redactText(msg.body).text;
+
   let commands: ParsedCommand[];
   try {
-    commands = await parser.parse(msg.body, { now: ctx.now, pendingFigureNumbers: pendingFigureNumbers(deps.ledger) });
+    commands = await parser.parse(redactedBody, { now: ctx.now, pendingFigureNumbers: pendingFigureNumbers(deps.ledger) });
   } catch (err) {
     commands = [{ kind: 'unclear', question: "I couldn't read that message. Could you resend it?" }];
     ctx.trace.tool('text.parse', { sid: msg.sid }, undefined, String(err));
@@ -273,7 +285,7 @@ async function handleMessage(ctx: ExtensionContext, twilio: TwilioApi, parser: C
   }
 
   logTextIn(ctx, msg, commands.map((c) => c.kind).join(','), commands, 'parsed');
-  for (const cmd of commands) await applyCommand(cmd, ctx, twilio);
+  for (const cmd of commands) await applyCommand(cmd, ctx, twilio, redactedBody);
 }
 
 export function createTextChannel(opts: { parser: CommandParser }): AgentExtension {

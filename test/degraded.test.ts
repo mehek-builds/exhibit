@@ -62,18 +62,9 @@ import { prohibitedSideEffects } from '../harness/grade.js';
 //
 // `it.fails` marks a confirmed defect: the test asserts the PRD 10 behavior, and the code does not
 // do it yet. Never weaken one of those assertions; fix the code, and the `.fails` must come off.
-//   web search error-in-200 never re-researched ... research/corroborator.ts:144,273
-//   web search request throws, run rejects ....... research/corroborator.ts:139
-//   web fetch down, research never re-queued ...... research/corroborator.ts:232-238,273
-//   Sheets down, run rejects (queue / read) ....... review/queue.ts:36,101 via agent.ts:274-276
-//   figures never reach the Sheet after recovery .. review/queue.ts:71-72
-//   verifier API throws, run rejects .............. research/corroborator.ts:123
-//   verifier API 5xx falls back to web search ..... research/corroborator.ts:126-133
-//   Internet Archive never retried ................ integrity/extension.ts:129
-//   Gmail / Calendar down, run rejects ............ pipeline/intake.ts:186,199
-//   GitHub raw network error, run rejects ......... pipeline/intake.ts:229
-//   Drive down, run rejects before mapping ........ agent.ts:201
-//   Docs down, run rejects ........................ letters/letters.ts:255, binder/scorecard.ts:238
+// As of this pass, no `it.fails` remain in this file -- every PRD 10 row below is asserted as a
+// normal (passing) test. Keep this comment in sync: if a future change reopens one of these
+// defects, re-add `it.fails` on that test and list it here again with its confirmed code location.
 
 const OWNER = DARA.emails[0]!;
 const PRIYA = DARA.recommenderCandidates.find((r) => r.email === 'priya@buildnight.example')!;

@@ -19,6 +19,7 @@ interface SignState {
   confirmationMsgId?: string;
   approvalMsgId?: string;
   requestId?: string;
+  refusalLogged?: boolean;
 }
 
 function readState(ledger: ExtensionContext['deps']['ledger'], letterId: string): SignState {
@@ -56,7 +57,12 @@ async function ensureLettersFolder(ctx: ExtensionContext): Promise<string> {
 
 export interface SigningExtensionOptions {
   client: DropboxSignClient;
-  /** true: enforce test mode + controlledEmails-only signers (constraint 18). */
+  /**
+   * true (the default): enforce constraint 18 -- test mode + controlledEmails-only signers.
+   * false only when the founder has explicitly opted into live signatures outside day mode
+   * (EXHIBIT_ALLOW_LIVE_SIGNATURES=1 with DROPBOX_SIGN_TEST_MODE=0); the confirmation + approval
+   * gates in processOne still apply unconditionally in every mode.
+   */
   dayMode: boolean;
 }
 
@@ -89,7 +95,7 @@ export function createSigningExtension(opts: SigningExtensionOptions): AgentExte
           to: [to],
           subject: `[Exhibit] Approve signature request ${row.letter_id}`,
           body: [
-            `${r.name} confirmed the final text of their letter for ${profile.name}. It is ready to go to Dropbox Sign for signature (test mode).`,
+            `${r.name} confirmed the final text of their letter for ${profile.name}. It is ready to go to Dropbox Sign for signature (${client.testMode ? 'test mode' : 'LIVE, legally binding'}).`,
             '',
             APPROVAL_INSTRUCTION,
             `APPROVE SIGN ${row.letter_id}`,
@@ -111,12 +117,15 @@ export function createSigningExtension(opts: SigningExtensionOptions): AgentExte
       const signerEmail = r.email.toLowerCase();
       if (dayMode && (!client.testMode || !(profile.controlledEmails ?? []).map((e) => e.toLowerCase()).includes(signerEmail))) {
         trace.tool('dropboxsign.signature_request.send', { letter_id: row.letter_id, signer: r.email, testMode: client.testMode }, undefined, 'refused: day mode requires test mode and a controlled signer address');
-        ledger.event({ run_id: runId, trace_id: trace.traceId, kind: 'signature', detail: { request_id: null, letter_id: row.letter_id, status: 'declined', test_mode: client.testMode, signer_email: r.email, reason: 'day-mode refusal: signer not controlled or not test mode' }, at: now.toISOString() });
+        if (!state.refusalLogged) {
+          ledger.event({ run_id: runId, trace_id: trace.traceId, kind: 'signature', detail: { request_id: null, letter_id: row.letter_id, status: 'declined', test_mode: client.testMode, signer_email: r.email, reason: 'day-mode refusal: signer not controlled or not test mode' }, at: now.toISOString() });
+          writeState(ledger, row.letter_id, { ...state, refusalLogged: true });
+        }
         return;
       }
 
       const draft = row.doc_id ? await apps.docs.getText(row.doc_id) : draftLetter(r, [], profile);
-      const pdf = renderPdf({ heading: `Recommendation letter: ${profile.name}`, subheading: `Signed by ${r.name} via Dropbox Sign (test mode)`, body: draft, highlights: [] });
+      const pdf = renderPdf({ heading: `Recommendation letter: ${profile.name}`, subheading: `Signed by ${r.name} via Dropbox Sign (${client.testMode ? 'test mode' : 'live'})`, body: draft, highlights: [] });
       const sent = await client.send({
         title: `Recommendation letter for ${profile.name}`,
         subject: `Please sign: recommendation letter for ${profile.name}`,
@@ -127,7 +136,23 @@ export function createSigningExtension(opts: SigningExtensionOptions): AgentExte
         fileContent: pdf,
       });
       trace.tool('dropboxsign.signature_request.send', { letter_id: row.letter_id, signer: r.email, testMode: client.testMode }, { requestId: sent.requestId });
-      ledger.event({ run_id: runId, trace_id: trace.traceId, kind: 'signature', detail: { request_id: sent.requestId, letter_id: row.letter_id, status: 'created', test_mode: client.testMode, signer_email: r.email }, at: now.toISOString() });
+      ledger.event({
+        run_id: runId,
+        trace_id: trace.traceId,
+        kind: 'signature',
+        detail: {
+          request_id: sent.requestId,
+          letter_id: row.letter_id,
+          status: 'created',
+          test_mode: client.testMode,
+          signer_email: r.email,
+          // Record what actually happened, never what the guard should have ensured: if the
+          // X-sign-both-approvals guard is bypassed, this event must show the missing confirmation.
+          recommender_confirmed: Boolean(state.confirmationMsgId),
+          founder_approved: Boolean(approval?.id),
+        },
+        at: now.toISOString(),
+      });
       state = { ...state, stage: 'requested', requestId: sent.requestId };
       writeState(ledger, row.letter_id, state);
       return;

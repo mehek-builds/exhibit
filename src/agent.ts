@@ -26,6 +26,7 @@ import { corroborate } from './research/corroborator.js';
 import type { Researcher, WebFetcher } from './research/types.js';
 import type { ReviewSummary } from './review/queue.js';
 import { applyDecisions, queueFigures } from './review/queue.js';
+import { requeueStaleFigures } from './research/freshness.js';
 import type { RuleOptions } from './rules/explicit.js';
 import type { PromptGraph } from './rules/graph.js';
 import type { Clock, ExhibitRecord, FounderProfile, SourceItem } from './types.js';
@@ -298,6 +299,10 @@ async function pipeline(deps: AgentDeps, trace: TraceContext, runId: string, now
   // Founder decisions from the last run first, then new research (6.11, 6.12).
   const reviewDeps = { apps, ledger, trace, profile, binder, runId, now };
   if (deps.features?.corroborate !== false) {
+    // Freshness at export (6.11): drop already-approved figures older than 12 months back to
+    // `pending` before any decisions or writes happen this run, so a stale number can never reach
+    // context notes without going through founder approval again.
+    requeueStaleFigures(ledger, now, { runId, traceId: trace.traceId });
     s.review = await applyDecisions(reviewDeps);
     for (const app of s.review.degraded) if (!s.degraded.includes(app)) s.degraded.push(app);
     s.corroboration = await corroborate(ledger.exhibits(), { drive: apps.drive, ledger, trace, graph, researcher: deps.researcher, fetcher: deps.fetcher, policy: deps.policy, binder, runId, now, structured: deps.structured, profile });

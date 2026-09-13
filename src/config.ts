@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import { createLiveApps, createLiveTwilio } from './apps/live/index.js';
 import type { FeatureReport } from './apps/live/index.js';
 import { argaApps, provisionArgaTwins, extend as argaExtend, teardown as argaTeardown } from '../harness/arga.js';
@@ -16,33 +15,13 @@ import { AnthropicResearcher, LiveFetcher } from './research/anthropic.js';
 import { sourcePolicy } from './research/corroborator.js';
 import type { Researcher, ResearchResult, WebFetcher } from './research/types.js';
 import { loadGraph } from './rules/graph.js';
+import { validateProfile } from './setup/profile.js';
 import type { FounderProfile } from './types.js';
 
 export type { FeatureReport } from './apps/live/index.js';
 
 // Wires AgentDeps for live mode (PRD 6 stack) and for a harness run against hosted Arga twins
 // (PRD 7.1). Mirrors harness/env.ts, which does the same for the in-memory twins.
-
-const RecommenderSchema = z.object({
-  name: z.string(),
-  email: z.string(),
-  relationship: z.enum(['dependent', 'independent']),
-  role: z.string(),
-});
-
-const FounderProfileSchema = z.object({
-  name: z.string(),
-  aliases: z.array(z.string()),
-  emails: z.array(z.string()).min(1),
-  domain: z.string(),
-  company: z.string(),
-  githubLogins: z.array(z.string()),
-  ownAccounts: z.array(z.string()),
-  linkedinId: z.string(),
-  field: z.string(),
-  targetFilingDate: z.string(),
-  recommenderCandidates: z.array(RecommenderSchema),
-}) satisfies z.ZodType<FounderProfile>;
 
 function loadProfile(env: NodeJS.ProcessEnv): FounderProfile {
   const raw = env.EXHIBIT_PROFILE;
@@ -53,9 +32,9 @@ function loadProfile(env: NodeJS.ProcessEnv): FounderProfile {
   } catch (err) {
     throw new Error(`buildLiveDeps: EXHIBIT_PROFILE is not valid JSON: ${String(err)}`);
   }
-  const result = FounderProfileSchema.safeParse(parsed);
-  if (!result.success) throw new Error(`buildLiveDeps: EXHIBIT_PROFILE does not match FounderProfile: ${result.error.message}`);
-  return result.data;
+  const result = validateProfile(parsed);
+  if (!result.ok) throw new Error(`buildLiveDeps: EXHIBIT_PROFILE does not match FounderProfile: ${result.error}`);
+  return result.profile;
 }
 
 function resolveModel(env: NodeJS.ProcessEnv): EvidenceModel {
@@ -102,7 +81,7 @@ interface TextChannelModule {
 }
 interface TextCommandsModule {
   HeuristicCommandParser: new () => unknown;
-  AnthropicCommandParser: new (apiKey: string, model?: string) => unknown;
+  AnthropicCommandParser: new (apiKey: string, graph: ReturnType<typeof loadGraph>, modelId?: string) => unknown;
 }
 interface StructuredModule {
   createStructuredResearch(opts: { adapters: VerifierAdapter[] }): unknown;
@@ -278,7 +257,7 @@ async function buildExtensions(env: NodeJS.ProcessEnv, features: FeatureReport[]
   features.push(twilioFeature);
   const [channelMod, commandsMod] = await Promise.all([tryModule<TextChannelModule>('./text/channel.js'), tryModule<TextCommandsModule>('./text/commands.js')]);
   if (channelMod && commandsMod && twilioApi) {
-    const parser = env.ANTHROPIC_API_KEY ? new commandsMod.AnthropicCommandParser(env.ANTHROPIC_API_KEY, env.EXHIBIT_MODEL ?? 'claude-sonnet-5') : new commandsMod.HeuristicCommandParser();
+    const parser = env.ANTHROPIC_API_KEY ? new commandsMod.AnthropicCommandParser(env.ANTHROPIC_API_KEY, loadGraph(), env.EXHIBIT_MODEL ?? 'claude-sonnet-5') : new commandsMod.HeuristicCommandParser();
     extensions.push(channelMod.createTextChannel({ parser }));
     features.push({ id: 'text-channel', enabled: true, reason: 'enabled' });
   } else {
@@ -297,13 +276,15 @@ async function buildExtensions(env: NodeJS.ProcessEnv, features: FeatureReport[]
     features.push({ id: 'integrity', enabled: false, reason: 'disabled: module not built' });
   }
 
-  // 4. signing (Dropbox Sign) -- test mode unless both DROPBOX_SIGN_TEST_MODE=0 and EXHIBIT_ALLOW_LIVE_SIGNATURES=1.
+  // 4. signing (Dropbox Sign) -- day mode (test mode + controlled signers only) unless both
+  // DROPBOX_SIGN_TEST_MODE=0 and EXHIBIT_ALLOW_LIVE_SIGNATURES=1 explicitly opt into live signatures.
   const [signingMod, dropboxSignMod] = await Promise.all([tryModule<SigningModule>('./letters/signing.js'), tryModule<DropboxSignModule>('./integrations/dropboxsign.js')]);
   if (signingMod && dropboxSignMod && env.DROPBOX_SIGN_API_KEY) {
-    const dayMode = env.DROPBOX_SIGN_TEST_MODE === '0' && env.EXHIBIT_ALLOW_LIVE_SIGNATURES === '1';
-    const client = dropboxSignMod.createDropboxSign({ apiKey: env.DROPBOX_SIGN_API_KEY, transport, testMode: !dayMode });
+    const liveSignaturesEnabled = env.DROPBOX_SIGN_TEST_MODE === '0' && env.EXHIBIT_ALLOW_LIVE_SIGNATURES === '1';
+    const dayMode = !liveSignaturesEnabled;
+    const client = dropboxSignMod.createDropboxSign({ apiKey: env.DROPBOX_SIGN_API_KEY, transport, testMode: dayMode });
     extensions.push(signingMod.createSigningExtension({ client, dayMode }));
-    features.push({ id: 'signing', enabled: true, reason: dayMode ? 'enabled (live signatures)' : 'enabled (test mode)' });
+    features.push({ id: 'signing', enabled: true, reason: liveSignaturesEnabled ? 'enabled (live signatures)' : 'enabled (test mode)' });
   } else {
     const why = !signingMod || !dropboxSignMod ? 'module not built' : 'DROPBOX_SIGN_API_KEY missing';
     features.push({ id: 'signing', enabled: false, reason: `disabled: ${why}` });

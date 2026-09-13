@@ -1,5 +1,4 @@
 import type { ApiCandidate, VerifierAdapter } from '../integrations/types.js';
-import type { FounderProfile } from '../types.js';
 import type { ResearchRequest } from './types.js';
 import type { StructuredResearch } from '../integrations/types.js';
 
@@ -11,17 +10,9 @@ import type { StructuredResearch } from '../integrations/types.js';
 // never use a source outside the primary/verifier lists, even as a lead — falling back to the open
 // web after an API 429 would do exactly that).
 //
-// NEEDS CORE PATCH (not owned here): `ResearchRequest` (src/research/types.ts) has no `profile`
-// field, but VerifierAdapter#figures needs profile.socCode/jobTitle for the #8 BLS/O*NET path.
-// Declaration-merged below so this file type-checks without editing that file; the real fix is to
-// add `profile: FounderProfile;` to ResearchRequest in src/research/types.ts and have
-// src/research/corroborator.ts pass `deps.profile` when it builds the request (see the "core
-// patches needed" note in this package's final report).
-declare module './types.js' {
-  interface ResearchRequest {
-    profile?: FounderProfile;
-  }
-}
+// `ResearchRequest.profile` (src/research/types.ts) carries the founder's occupation code/handles
+// for VerifierAdapter#figures' #8 BLS/O*NET path; it is now a real field on the interface, so this
+// module no longer needs a declaration-merge patch.
 
 const GITHUB_HOST_RE = /(^|\.)github\.com$/i;
 const DOI_RE = /doi\.org\//i;
