@@ -58,8 +58,14 @@ describe('T-revenue-not-pay: structural personal-pay phrasings exempt the trap (
     ['signed offer letter', 'We are pleased to extend this signed offer letter. Revenue was $2M this quarter.'],
     ['W-2', 'Attached is your W-2 for tax year 2025. Revenue was $2M this quarter.'],
     ['pay stub', 'Your pay stub for this period is attached. Revenue was $2M this quarter.'],
-    ['equity grant to the person', 'You were issued an equity grant of 50,000 shares. Revenue was $2M this quarter.'],
-    // R1 under-match fixes: character-window matching, not clause-split, so "Inc." can't break it.
+    // CHANGED: under the sentence-scoped design an equity/option grant needs a stated dollar
+    // amount to be strong, same as any other pay term (constraint: 'strong' must be strict) --
+    // a bare share count ("50,000 shares") isn't a quantified money amount on its own. The trap
+    // still doesn't fire here (no revenue-adjacent business word in this sentence to fire it on),
+    // but the tier itself is ambiguous, not strong; see the table below.
+    // R1 under-match fixes: checks are sentence-scoped (splitSentences in src/rules/explicit.ts);
+    // these cases pin that "Inc." doesn't split an offer from its amount and that a negation of a
+    // different noun doesn't cancel the pay term.
     ['"Inc." between offer and amount', 'Offer from Loomwork Inc. $190,000 base plus 0.5% equity. Company ARR $3M.'],
     ['negation governs a different noun, not the pay term', 'No equity, just a base salary of $180,000. Loomwork ARR is $3M.'],
   ];
@@ -92,22 +98,28 @@ describe('T-revenue-not-pay: structural personal-pay phrasings exempt the trap (
     });
   }
 
-  // No pay-ish vocabulary at all: rejected, same as before the redesign.
-  const trapped: Array<[string, string]> = [['generic offer, no amount', 'Revenue was $2M this quarter. We offer free onboarding to every customer.']];
-  for (const [label, text] of trapped) {
-    it(`still traps (none): ${label}`, () => {
+  // CHANGED: 'offer' (bare, any form) is now itself ambiguous pay vocabulary (payEvidence item 2:
+  // the ambiguous tier is deliberately broad, F2's under-match fix), so "we offer free onboarding"
+  // alongside revenue is no longer a clean reject -- it degrades to needs_attorney, the safe
+  // direction (constraint 4). There is no remaining "no pay-ish vocabulary at all" case that still
+  // contains the word "offer"; genuinely pay-vocabulary-free revenue text is covered by the
+  // 'T-revenue-not-pay: the bypass sentence bug' and 'backstop' describe blocks below.
+  const ambiguousOffer: Array<[string, string]> = [['generic offer, no amount', 'Revenue was $2M this quarter. We offer free onboarding to every customer.']];
+  for (const [label, text] of ambiguousOffer) {
+    it(`needs_attorney (ambiguous, bare "offer" vocabulary): ${label}`, () => {
       const it_ = redacted({ app: 'gmail', id: `m-trap-${label.replace(/\s+/g, '-')}`, title: 'Q2 update', text });
       const m = applyExplicitRules(it_, cls({ kind: 'remuneration' }), PROFILE);
       expect(m!.rule_id).toBe('T-revenue-not-pay');
-      expect(m!.status).toBe('rejected');
-      expect(payEvidence(text)).toBe('none');
+      expect(m!.status).toBe('needs_attorney');
+      expect(payEvidence(text)).toBe('ambiguous');
     });
   }
 });
 
 // Table-driven expectations for payEvidence / isPersonalPay (PRD 5.1 #8, 5.5 T-revenue-not-pay).
-// Character-window based (not clause-split), so "Inc.", "U.S." and "$1.5M" can never break a
-// strong salary/amount pairing (R1). `isPersonalPay` is a compatibility wrapper: true iff strong.
+// Sentence-scoped: a pay term, a non-zero amount and no business-money or negation words must all
+// sit in one sentence, and the splitter leaves decimals like "$1.5M" intact (R1, F1). `isPersonalPay`
+// is a compatibility wrapper: true iff strong.
 describe('payEvidence / isPersonalPay: table-driven expectation matrix', () => {
   const mustBeStrong: Array<[string, string]> = [
     ['salary with amount, revenue separate clause', 'Salary: $210,000 per year. Company revenue was $4M ARR this quarter.'],
@@ -116,7 +128,6 @@ describe('payEvidence / isPersonalPay: table-driven expectation matrix', () => {
     ['signed offer letter', 'signed offer letter'],
     ['W-2', 'W-2'],
     ['pay stub', 'pay stub'],
-    ['equity grant issued to the person', 'You were issued an equity grant of 50,000 shares.'],
     // Regression cases from re-review N2: negation elsewhere on the line must not blank a real pay
     // statement in its own clause/sentence.
     ['negation in a later clause does not cancel an earlier salary clause', 'Salary: $210,000. We do not offer stock options at this stage. Revenue $4M ARR.'],
@@ -154,6 +165,14 @@ describe('payEvidence / isPersonalPay: table-driven expectation matrix', () => {
     ['bare "compensation management" product copy', 'We sell compensation management software to HR teams. ARR reached $5M.'],
     ['bare "Compensation expense" line item', 'Revenue: $4M. Compensation expense for the team: $1.2M.'],
     ['"offer SMBs a $49 plan per year", no salary/base word', 'Revenue $2M. We offer SMBs a $49 plan per year.'],
+    // CHANGED: moved here from mustBeStrong. An equity/option grant needs a stated dollar amount
+    // to be strong, same as any other pay term ('strong' must be strict) -- a bare share count
+    // isn't a quantified money amount. Still genuine pay-ish vocabulary, so it's ambiguous, not none.
+    ['equity grant issued to the person, no dollar amount', 'You were issued an equity grant of 50,000 shares.'],
+    // CHANGED: moved here from mustBeNone. Bare "offered" is itself ambiguous vocabulary
+    // (payEvidence item 2, F2's under-match fix); the amount is correctly not paired with it
+    // (sentence-scoped), but the word alone still routes to needs_attorney, not a clean pass.
+    ['amount far from the offer word, different sentence -- still ambiguous vocabulary', 'Revenue $2M. We offered a customer a partnership. Full pricing detail: the annual plan runs $10,000.'],
   ];
   for (const [label, text] of mustBeAmbiguous) {
     it(`is ambiguous: ${label}`, () => {
@@ -163,11 +182,9 @@ describe('payEvidence / isPersonalPay: table-driven expectation matrix', () => {
   }
 
   const mustBeNone: Array<[string, string]> = [
-    ['generic customer offer', 'We offer free onboarding to every customer.'],
+    // CHANGED: 'offer' (any form) is now itself ambiguous vocabulary (F2's under-match fix), so a
+    // "generic customer offer" is no longer pay-vocabulary-free; moved to mustBeAmbiguous above.
     ['a plain revenue statement with no pay vocabulary at all', 'Our ARR crossed $2M this quarter.'],
-    // Adversarial: an amount far from the pay word, in an unrelated sentence -- must not be
-    // conflated with the earlier "offered a partnership" (sentence-scoped, forward-only matching).
-    ['amount far from the pay/offer word, different sentence', 'Revenue $2M. We offered a customer a partnership. Full pricing detail: the annual plan runs $10,000.'],
   ];
   for (const [label, text] of mustBeNone) {
     it(`is none: ${label}`, () => {
@@ -201,6 +218,111 @@ describe('payEvidence / isPersonalPay: table-driven expectation matrix', () => {
       expect(payEvidence('Our new compensation plan for customers launches next quarter.')).toBe('ambiguous');
       expect(isPersonalPay('Our new compensation plan for customers launches next quarter.')).toBe(false);
     });
+  });
+});
+
+// Review round 4 (pay4.ts) findings F1 (over-exemption: revenue text read as strong) and F2
+// (under-match: genuine pay without "salary"/"base" read as none). Every text below is verbatim
+// from the review's evidence list.
+describe('review round 4 F1: revenue text must never read as strong pay', () => {
+  const revAsStrong: Array<[string, string]> = [
+    ['negated salary, ARR nearby', "I haven't taken a salary, ARR is $2M."],
+    ['zero salary, ARR nearby', 'Founder salary: $0, ARR hit $1.2M this quarter.'],
+    ['salary costs (payroll), not personal pay', 'Salary costs were $800k; revenue $4M.'],
+    ['salary budget for new hires', 'Q3: ARR $3M, salary budget for new hires $600k.'],
+    ['salary TBD, no real amount', 'Salary: TBD, revenue $4M.'],
+    ['market-average salary benchmark', 'Average salary in our market is $150k, and our revenue is $2M.'],
+    ['employment agreement with someone else', 'We signed an employment agreement with our first hire. Revenue $2M.'],
+    ['shares issued to investors, not the founder', 'We issued 1M shares to seed investors. Revenue $2M.'],
+    ['payroll tool / pay stub as a product feature, not the founder’s own', 'Our payroll tool generates each pay stub. ARR $5M.'],
+    ['explicitly negated salary via "without"', 'Without a salary, revenue funds me: $2M ARR.'],
+    ['salary spend (payroll) cut, revenue rose', 'We cut salary spend by $200k while revenue rose to $3M.'],
+    ['"Salary.com" brand name, not a pay statement', 'Salary.com lists revenue of $50M.'],
+  ];
+  for (const [label, text] of revAsStrong) {
+    it(`is not strong: ${label}`, () => {
+      expect(payEvidence(text), text).not.toBe('strong');
+    });
+  }
+
+  it('none of the F1 texts let a model-qualifying #8 mapping survive enforceInvariants as qualifying', () => {
+    for (const [, text] of revAsStrong) {
+      const it_ = redacted({ app: 'gmail', id: `m-f1-${text.length}`, title: 'Update', text });
+      const modelMapping: Mapping = mapping([8], 'qualifying', 'M-model', 'model', text, { decided_by: 'model' });
+      const out = enforceInvariants(modelMapping, it_, PROFILE);
+      expect(out.status, text).not.toBe('qualifying');
+    }
+  });
+});
+
+describe('review round 4 F2: genuine pay without "salary"/"base" must never read as none', () => {
+  const payNone: Array<[string, string]> = [
+    ['plain "pay" with amount', 'Your annual pay is $210,000. Company revenue last year: $4M.'],
+    ['"cash comp" with amount', 'Total cash comp: $250,000/yr. ARR $3M.'],
+    ['"wages paid" with amount', 'Wages paid to Dara Voss in 2025: $210,000. Revenue $4M.'],
+    ['"gross pay" with amount', 'Your earnings statement: gross pay $17,500 this month. Revenue $4M.'],
+    ['"will pay you" with amount', 'We will pay you $200,000 per year. Revenue $4M.'],
+    ['1099-NEC paid amount', 'Form 1099-NEC: $180,000 paid to Dara Voss. Revenue $4M.'],
+  ];
+  for (const [label, text] of payNone) {
+    it(`is not none (at least ambiguous): ${label}`, () => {
+      expect(payEvidence(text), text).not.toBe('none');
+    });
+  }
+
+  it('none of the F2 texts let a model-qualifying #8 mapping get silently rejected', () => {
+    for (const [, text] of payNone) {
+      const it_ = redacted({ app: 'gmail', id: `m-f2-${text.length}`, title: 'Update', text });
+      const modelMapping: Mapping = mapping([8], 'qualifying', 'M-model', 'model', text, { decided_by: 'model' });
+      const out = enforceInvariants(modelMapping, it_, PROFILE);
+      expect(out.status, text).not.toBe('rejected');
+    }
+  });
+});
+
+describe('sentence-split boundary cases (own adversarial cases)', () => {
+  it('period splits "Salary" from its amount into separate sentences -- judged ambiguous, not strong', () => {
+    // "Salary." and "$210,000" land in different sentences once split on the period, so neither
+    // sentence alone has both a pay term and a non-zero amount. This is a real loss of automation
+    // versus a same-sentence "Salary: $210,000", but it is the safe direction (constraint 4): the
+    // bare word "salary" is still pay-ish vocabulary, so the tier is ambiguous, never none.
+    expect(payEvidence('Salary. $210,000')).toBe('ambiguous');
+  });
+
+  it('"Offer from Loomwork Inc. $190,000 base plus equity." is strong: "Inc." does not break the sentence', () => {
+    // The decimal-aware splitter treats "Inc." as an ordinary sentence-ending period (no digits on
+    // both sides), but "base plus equity" sits in the same clause as the amount either way because
+    // there is no delimiter between "Inc." and "$190,000 base" other than the abbreviation period
+    // itself -- "Offer from Loomwork Inc." and "$190,000 base plus equity." land in two sentences,
+    // and the second sentence alone ("$190,000 base plus equity") has the base-amount pairing.
+    expect(payEvidence('Offer from Loomwork Inc. $190,000 base plus equity.')).toBe('strong');
+  });
+
+  it('"Her salary is $0 while revenue is $2M." is not strong: the only amount for "salary" is zero', () => {
+    expect(payEvidence('Her salary is $0 while revenue is $2M.')).not.toBe('strong');
+    expect(payEvidence('Her salary is $0 while revenue is $2M.')).toBe('ambiguous');
+  });
+
+  it('"We pay our contractors $50/hr; revenue $1M." is ambiguous, not strong', () => {
+    // Bare "pay" (no "paid you/her/him", "will pay you", "annual pay" or "pay of") is not a strong
+    // PAY_TERM by design -- only the more specific forms are, precisely so that "we pay our
+    // contractors" (someone else's pay) can't read as the founder's own. The semicolon also splits
+    // this from "revenue $1M" into its own sentence, so the fallback is the broad ambiguous
+    // vocabulary tier ("pay"), not none.
+    expect(payEvidence('We pay our contractors $50/hr; revenue $1M.')).toBe('ambiguous');
+  });
+
+  it('"Base salary $180,000; company revenue $4M." is strong: the semicolon splits pay from revenue', () => {
+    expect(payEvidence('Base salary $180,000; company revenue $4M.')).toBe('strong');
+  });
+
+  it('"Dara was granted 500,000 options." is ambiguous: a share/option count is not a dollar amount', () => {
+    // The sentence names the founder as the grant recipient (equityGrantToPerson's leading-subject
+    // heuristic matches "Dara was granted ..."), but a bare option count has no dollar amount, and
+    // 'strong' requires one (same judgment call as the "equity grant issued to the person" case
+    // above). Still genuine pay-ish vocabulary ("options"), so it is ambiguous, not none.
+    expect(payEvidence('Dara was granted 500,000 options.', 'Dara Voss')).toBe('ambiguous');
+    expect(payEvidence('Dara was granted 500,000 options.')).toBe('ambiguous');
   });
 });
 

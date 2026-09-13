@@ -585,3 +585,146 @@ describe('live Twilio adapter self-throttles to the trial rate limit', () => {
     expect((second as PromiseFulfilledResult<{ sid: string }>).value.sid).toBe('SM2');
   });
 });
+
+// F4 (constraint 13): a `yes` must only ground a staged confirmation (e.g. a bulk figure approve
+// all) on an unhedged affirmative. Deferral ("later", "think about it"), reversal ("actually",
+// "on second thought") and trailing "..."/"?" hedges must all be blocked, even alongside an
+// affirmative token like "sure" or "ok".
+describe('F4: yes only grounds on an unhedged affirmative', () => {
+  const blockedPhrases = [
+    'ok I will think about it',
+    'sure, later',
+    'sure... actually nah',
+    'not now',
+    'not yet',
+    'let me think',
+    'maybe',
+    'perhaps',
+    'not sure',
+    'unsure',
+    'hmm',
+    'hold on',
+    'wait',
+    'actually',
+    'nah',
+    'nope',
+    'on second thought',
+    'never mind',
+    'nvm',
+    'cancel',
+    'stop',
+    "don't",
+    'no',
+    'not',
+    'ok?',
+    'sure...',
+  ];
+
+  const allowedPhrases = ['yes', 'yes please', 'ok go', 'yes approve all', 'yep, do it', 'confirm', 'sure', 'go ahead'];
+
+  describe('mocked-Anthropic parser', () => {
+    for (const text of blockedPhrases) {
+      it(`"${text}" gets a clarifying question, not a grounded yes`, async () => {
+        vi.resetModules();
+        vi.doMock('@ai-sdk/anthropic', () => ({
+          createAnthropic: () => () => mockModel(() => textResult({ commands: [{ kind: 'yes' }] })),
+        }));
+        const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+        const parser = new MockedParser('unused-key', graph);
+        const out = await parser.parse(text, { now: NOW, pendingFigureNumbers: [] });
+        expect(out).toHaveLength(1);
+        expect(out[0]!.kind).toBe('unclear');
+        vi.doUnmock('@ai-sdk/anthropic');
+        vi.resetModules();
+      });
+    }
+
+    for (const text of allowedPhrases) {
+      it(`"${text}" still grounds a yes`, async () => {
+        vi.resetModules();
+        vi.doMock('@ai-sdk/anthropic', () => ({
+          createAnthropic: () => () => mockModel(() => textResult({ commands: [{ kind: 'yes' }] })),
+        }));
+        const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+        const parser = new MockedParser('unused-key', graph);
+        const out = await parser.parse(text, { now: NOW, pendingFigureNumbers: [] });
+        expect(out).toEqual([{ kind: 'yes' }]);
+        vi.doUnmock('@ai-sdk/anthropic');
+        vi.resetModules();
+      });
+    }
+  });
+
+  describe('HeuristicCommandParser yes path', () => {
+    // The heuristic parser only enters the yes branch on the literal keyword "yes" (KEYWORD_RE
+    // has no synonyms), so only phrases built around that literal word exercise it end to end.
+    const parser = new HeuristicCommandParser();
+
+    for (const text of blockedPhrases) {
+      // "stop" is itself a parser keyword, so prefixing with it would split into a second
+      // segment (a real `stop` command) instead of exercising the yes branch alone.
+      if (text === 'stop') continue;
+      const withYes = `yes, ${text}`;
+      it(`"${withYes}" gets a clarifying question, not a grounded yes`, async () => {
+        const out = await parser.parse(withYes, { now: NOW, pendingFigureNumbers: [] });
+        expect(out).toHaveLength(1);
+        expect(out[0]!.kind).toBe('unclear');
+      });
+    }
+
+    it('"yes" still grounds a yes', async () => {
+      const out = await parser.parse('yes', { now: NOW, pendingFigureNumbers: [] });
+      expect(out).toEqual([{ kind: 'yes' }]);
+    });
+
+    it('"yes please" still grounds a yes', async () => {
+      const out = await parser.parse('yes please', { now: NOW, pendingFigureNumbers: [] });
+      expect(out).toEqual([{ kind: 'yes' }]);
+    });
+
+    it('"yes approve all" grounds both the yes and the approve-all (both keywords present)', async () => {
+      const out = await parser.parse('yes approve all', { now: NOW, pendingFigureNumbers: [] });
+      expect(out).toEqual([{ kind: 'yes' }, { kind: 'approve', figures: 'all' }]);
+    });
+  });
+
+  it('end to end: a staged approve-all is NOT applied for "sure... actually nah"', async () => {
+    const h = await setup();
+    const fig1 = figureRow({ fig_id: 'FIG-001', exhibit_id: 'EX-3-001' });
+    const fig2 = figureRow({ fig_id: 'FIG-002', exhibit_id: 'EX-3-002' });
+    h.ledger.insertFigure(fig1);
+    h.ledger.insertFigure(fig2);
+    listFiguresText([fig1, fig2], h.ledger);
+    h.ledger.set('text_pending_confirm', JSON.stringify({ figureIds: ['FIG-001', 'FIG-002'], createdAt: h.ctx.now.toISOString() }));
+
+    const ext = createTextChannel({ parser: new HeuristicCommandParser() });
+    h.twilio.adminInbound(FOUNDER_PHONE, 'sure... actually nah');
+    await ext.beforeClassify!(h.ctx);
+
+    expect(h.ledger.get('text_pending_confirm')).not.toBe('');
+    expect(h.ledger.figure('FIG-001')!.status).toBe('pending');
+    expect(h.ledger.figure('FIG-002')!.status).toBe('pending');
+    const [inEvent] = h.ledger.events({ kind: 'text_in' }).slice(-1);
+    expect(inEvent!.detail.action).not.toBe('applied');
+  });
+
+  it('end to end: a staged approve-all IS applied (grounded) for a clean "yes"', async () => {
+    const h = await setup();
+    const fig1 = figureRow({ fig_id: 'FIG-001', exhibit_id: 'EX-3-001' });
+    h.ledger.insertFigure(fig1);
+    listFiguresText([fig1], h.ledger);
+    h.ledger.set('text_pending_confirm', JSON.stringify({ figureIds: ['FIG-001'], createdAt: h.ctx.now.toISOString() }));
+
+    const ext = createTextChannel({ parser: new HeuristicCommandParser() });
+    h.twilio.adminInbound(FOUNDER_PHONE, 'yes');
+    await ext.beforeClassify!(h.ctx);
+
+    // A clean "yes" is grounded and reaches the apply path (the staged confirmation is consumed
+    // and the reply is no longer a clarify), unlike every blocked phrase above.
+    expect(h.ledger.get('text_pending_confirm')).toBeFalsy();
+    const [inEvent] = h.ledger.events({ kind: 'text_in' }).slice(-1);
+    expect(inEvent!.detail.action).not.toBe('ignored_injection_or_empty');
+    const outs = h.ledger.events({ kind: 'text_out' });
+    expect(outs.at(-1)!.detail.kind).not.toBe('clarify');
+  });
+});

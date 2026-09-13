@@ -155,7 +155,11 @@ export async function renderContextNotes(deps: ReviewDeps, exhibitId: string): P
   const target = await contextNotesFile(deps, exhibitId);
   if (!target) return;
   const baseId = exhibitId.split('.v')[0]!;
-  const approved = deps.ledger.figures({ status: 'approved', exhibitId: baseId });
+  // Ledger.figures({ exhibitId }) matches exhibit_id exactly, but a figure's exhibit_id was stamped
+  // at creation time and may carry an older or newer `.vN` suffix than the exhibit's current version
+  // (filer.ts bumps the exhibit's version independently of when figures were corroborated). Filter by
+  // the stripped base id here so approved figures follow their exhibit across re-files.
+  const approved = deps.ledger.figures({ status: 'approved' }).filter((f) => f.exhibit_id.split('.v')[0] === baseId);
   if (approved.length === 0) {
     // Never create the file just to hold the "approved figures only" header -- E46/E48 expect no
     // context-notes.md while nothing has ever been approved. If a note already exists (a figure was

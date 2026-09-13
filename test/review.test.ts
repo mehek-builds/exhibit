@@ -269,6 +269,69 @@ describe('review queue: an ID cell that never resolves to a known figure, but ca
   });
 });
 
+describe('review queue: approved figures follow a versioned exhibit (F3 regression)', () => {
+  it('an approved figure on a .v2 exhibit appears in that exhibit\'s context-notes.md, and stays after a second run', async () => {
+    const { twins, ledger, binder, reviewDeps } = await setup();
+    const baseId = 'EX-3-010';
+    const versionedId = `${baseId}.v2`;
+    // The Drive folder is keyed by the base id (filer.ts's re-file writes into the same exhibit
+    // folder across versions), but the figure was corroborated against the exhibit's current
+    // (versioned) id, matching how corroborator.ts stamps exhibit_id.
+    const folders = await makeExhibitFolder(twins, ledger, binder, baseId);
+    const snap = await stageSnapshot(twins, binder, 'snap10.html', '<html>Devtools Weekly reaches 1,200,000 monthly readers.</html>');
+    const row = figureRow({ fig_id: 'FIG-010', exhibit_id: versionedId, sources: [{ kind: 'primary', url: 'https://devtoolsweekly.example/media-kit', publisher: 'Devtools Weekly', sentence: 'reaches 1,200,000', snapshot_html_id: snap.id, snapshot_pdf_id: null, snapshot_sha256: snap.sha256, as_of: '2026-08-01' }] });
+    ledger.insertFigure(row);
+    await queueFigures([row], reviewDeps);
+    const sheetId = ledger.get('review_sheet')!;
+    twins.adminSetSheetCell(sheetId, { column: 'ID', equals: 'FIG-010' }, 'Decision', 'Approve');
+
+    const summary = await applyDecisions(reviewDeps);
+    expect(summary.approved).toEqual(['FIG-010']);
+
+    const notesFile = await twins.apps.drive.findChild(folders.folder, 'context-notes.md');
+    expect(notesFile).not.toBeNull();
+    const notesText = Buffer.from(await twins.apps.drive.readFile(notesFile!.id)).toString('utf8');
+    expect(notesText).toContain('FIG-010');
+
+    // A second run (e.g. a later invocation with nothing new to decide) must not drop the line.
+    const summary2 = await applyDecisions(reviewDeps);
+    expect(summary2.approved).toEqual([]);
+    const notesText2 = Buffer.from(await twins.apps.drive.readFile(notesFile!.id)).toString('utf8');
+    expect(notesText2).toContain('FIG-010');
+    ledger.close();
+  });
+});
+
+describe('review queue: notes survive a re-file from v1 to v2', () => {
+  it('after a re-file from v1 to v2, notes still show approved figures exactly once', async () => {
+    const { twins, ledger, binder, reviewDeps } = await setup();
+    const baseId = 'EX-3-011';
+    const folders = await makeExhibitFolder(twins, ledger, binder, baseId);
+    const snap = await stageSnapshot(twins, binder, 'snap11.html', '<html>Devtools Weekly reaches 1,200,000 monthly readers.</html>');
+    // Figure created and approved while the exhibit was still at v1 (bare id, no suffix).
+    const row = figureRow({ fig_id: 'FIG-011', exhibit_id: baseId, sources: [{ kind: 'primary', url: 'https://devtoolsweekly.example/media-kit', publisher: 'Devtools Weekly', sentence: 'reaches 1,200,000', snapshot_html_id: snap.id, snapshot_pdf_id: null, snapshot_sha256: snap.sha256, as_of: '2026-08-01' }] });
+    ledger.insertFigure(row);
+    await queueFigures([row], reviewDeps);
+    const sheetId = ledger.get('review_sheet')!;
+    twins.adminSetSheetCell(sheetId, { column: 'ID', equals: 'FIG-011' }, 'Decision', 'Approve');
+    await applyDecisions(reviewDeps);
+
+    const notesFile = await twins.apps.drive.findChild(folders.folder, 'context-notes.md');
+    const before = Buffer.from(await twins.apps.drive.readFile(notesFile!.id)).toString('utf8');
+    expect(before.match(/FIG-011/g)?.length).toBe(1);
+
+    // Re-file bumps the exhibit to v2; the figure's stamped exhibit_id is untouched (it points at v1).
+    const newRow = figureRow({ fig_id: 'FIG-012', exhibit_id: `${baseId}.v2`, sources: [] });
+    ledger.insertFigure({ ...newRow, status: 'pending' });
+
+    // Re-running applyDecisions (nothing new decided) must still render exactly one FIG-011 line.
+    await applyDecisions(reviewDeps);
+    const after = Buffer.from(await twins.apps.drive.readFile(notesFile!.id)).toString('utf8');
+    expect(after.match(/FIG-011/g)?.length).toBe(1);
+    ledger.close();
+  });
+});
+
 /** ensureSheet is not exported; create the review sheet the same way queueFigures would (via a
  * no-op queueFigures call with an empty batch, which still creates the sheet on first use). */
 async function ensureSheetForTest(twins: MemoryTwins, ledger: Ledger): Promise<{ sheetId: string }> {

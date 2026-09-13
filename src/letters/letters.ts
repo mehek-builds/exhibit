@@ -61,9 +61,12 @@ function linkedExhibits(r: Recommender, exhibits: ExhibitRecord[]): ExhibitRecor
 const FAILURE_RULE_IDS = new Set(['V-no-source-date', 'V-quote-not-found', 'N-unmapped']);
 
 /** True when a `needs_attorney` exhibit actually passed verification: it has at least one O-1A
- * criterion, a real source date, and a rule id that isn't one of the pipeline-failure routes above. */
+ * criterion, a real source date, and a rule id that isn't one of the pipeline-failure routes above.
+ * A `T-` prefixed rule id is a trap (prompts/fragments/traps.json's convention, applied by
+ * src/rules/explicit.ts) -- deliberately ambiguous evidence a recommender cannot honestly speak to,
+ * so it must never seed or support a letter draft even though it isn't a pipeline failure. */
 function isVerifiedNeedsAttorney(e: ExhibitRecord): boolean {
-  return e.criteria.length > 0 && !!e.event_date && !FAILURE_RULE_IDS.has(e.rule_id);
+  return e.criteria.length > 0 && !!e.event_date && !FAILURE_RULE_IDS.has(e.rule_id) && !e.rule_id.startsWith('T-');
 }
 
 /**

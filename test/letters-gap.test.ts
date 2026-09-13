@@ -250,6 +250,31 @@ describe('letters: a "one exhibit from met" criterion also triggers a request (P
     ledger.close();
   });
 
+  it('does not trigger, and is never cited, from a T-prefixed trap needs_attorney exhibit (T-revenue-not-pay)', async () => {
+    // A trap rule id (prompts/fragments/traps.json's convention, applied in src/rules/explicit.ts) is
+    // deliberately ambiguous evidence, not a genuine near-miss -- it must never seed or support a
+    // letter draft even though it has criteria, an event_date, and isn't in FAILURE_RULE_IDS.
+    const r = PROFILE.recommenderCandidates[0]!;
+    const profile: FounderProfile = { ...PROFILE, recommenderCandidates: [r] };
+    const { deps, ledger } = await makeDeps(profile);
+    ledger.upsertCandidate(baseCandidate({ key: 'c-1', criteria: [4] }));
+    ledger.insertExhibit(
+      baseExhibit({
+        exhibit_id: 'EX-4-009',
+        status: 'needs_attorney',
+        rule_id: 'T-revenue-not-pay',
+        event_date: '2026-03-14',
+        criteria: [4],
+        people: [{ name: r.name, email: r.email }],
+      }),
+      'r1',
+      null,
+    );
+    const summary = await processLetters(deps);
+    expect(summary.skipped.find((s) => s.email === r.email)?.reason).toBe('no linked qualifying exhibit');
+    ledger.close();
+  });
+
   it('does not trigger, and is never cited, from a needs_attorney exhibit with no criteria at all', async () => {
     const r = PROFILE.recommenderCandidates[0]!;
     const profile: FounderProfile = { ...PROFILE, recommenderCandidates: [r] };

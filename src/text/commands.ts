@@ -161,7 +161,7 @@ function parseSegment(segment: string, ctx: ParseContext, fullText: string): Par
     return { kind: 'start' };
   }
   if (/^yes\b/.test(lower)) {
-    if (!AFFIRM_RE.test(fullText) || NEGATION_RE.test(fullText)) return unclear(`I wasn't able to confirm everything in "${fullText.trim()}". Could you rephrase it as separate short commands (e.g. "approve 1", "deny 2 <reason>", "pause until <date>")?`);
+    if (!AFFIRM_RE.test(fullText) || NEGATION_RE.test(fullText) || hasTrailingHedgePunctuation(fullText)) return unclear(`I wasn't able to confirm everything in "${fullText.trim()}". Could you rephrase it as separate short commands (e.g. "approve 1", "deny 2 <reason>", "pause until <date>")?`);
     return { kind: 'yes' };
   }
   return unclear(`I didn't understand "${segment}".`);
@@ -282,7 +282,16 @@ const KIND_SYNONYM_RE: Partial<Record<ParsedCommand['kind'], RegExp>> = {
 };
 
 const AFFIRM_RE = /\b(yes|y|yep|yeah|confirm(?:ed)?|ok(?:ay)?|sure|go\s+ahead|do\s+it)\b/i;
-const NEGATION_RE = /\b(no|not|don'?t|wait|hold|stop|cancel|never)\b/i;
+// Hesitation, deferral or reversal: any of these anywhere in the text blocks a `yes` grounding,
+// even alongside an affirmative token (F4: "sure, later" is not an unhedged yes).
+const NEGATION_RE = /\b(no|not|don'?t|wait|hold\s+on|hold|stop|cancel|never\s?mind|nvm|later|think\s+about\s+it|let\s+me\s+think|maybe|perhaps|unsure|hmm+|actually|nah|nope|on\s+second\s+thought)\b/i;
+
+/** Trailing "..." or "?" on an otherwise affirmative text ("ok?", "sure...") reads as a hedge, not
+ * an unhedged confirmation. */
+function hasTrailingHedgePunctuation(text: string): boolean {
+  const trimmed = text.trim();
+  return /\.\.\.$/.test(trimmed) || /\?$/.test(trimmed);
+}
 
 const START_INTENT_RE = /\b(start|resume|unpause)\b|i'?m\s+back|turn\s+texts?\s+back\s+on|you\s+can\s+text\s+me\s+again/i;
 const STOP_INTENT_RE = /\bstop\b|\bdon'?t\b|no\s+more|\bpause\b|\bquiet\b|leave\s+me\s+alone|for\s+a\s+while|back\s+off/i;
@@ -307,7 +316,7 @@ const GROUNDED_KINDS = new Set<ParsedCommand['kind']>(['approve', 'deny', 'pause
 function isGrounded(cmd: ParsedCommand, text: string, now: Date): boolean {
   if (!GROUNDED_KINDS.has(cmd.kind)) return true;
 
-  if (cmd.kind === 'yes') return AFFIRM_RE.test(text) && !NEGATION_RE.test(text);
+  if (cmd.kind === 'yes') return AFFIRM_RE.test(text) && !NEGATION_RE.test(text) && !hasTrailingHedgePunctuation(text);
   if (cmd.kind === 'start' || cmd.kind === 'resume') return START_INTENT_RE.test(text) && !STOP_INTENT_RE.test(text);
 
   const re = KIND_SYNONYM_RE[cmd.kind];

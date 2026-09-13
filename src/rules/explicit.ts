@@ -31,141 +31,158 @@ export const PATTERNS = {
   performingArtsSuccess: /\b(box office|ticket sales|gate receipts|record sales|streaming (?:numbers|figures))\b[^\n]{0,90}\b(commercial success|performing arts)\b|\b(commercial success)\b[^\n]{0,90}\b(performing arts|box office|ticket sales|record sales)\b/i,
   revenue: /\b(revenue|MRR|ARR|gross sales)\b/i,
   pay: /\b(salary|base pay|compensation|stock|equity|shares|SAFE|investment)\b/i,
-  /** "salary" or "base pay/base salary" (or bare "base" used as shorthand, e.g. "$190,000 base") -- narrow enough to be strong evidence once paired with an amount. */
-  strongPayWord: /\b(?:base\s+(?:pay|salary)|salary)\b/gi,
-  /**
-   * Bare "base" is only pay shorthand when glued to an amount: "$190,000 base" or "base of $190,000".
-   * On its own it is usually "customer base" / "install base" / "user base" next to a revenue figure.
-   */
-  baseAmount: /\$\s?\d[\d,]*(?:\.\d+)?\s?(?:k|K|m|M)?\s+base\b|\bbase\s*(?::|of|=)\s*\$\s?\d/gi,
-  /** Words that make a nearby "base" a business base, never pay. */
-  businessBase: /\b(?:customer|user|install(?:ed)?|subscriber|client|fan|revenue|tax|cost|data|code|asset|capital)s?\s*$/i,
-  /** A dollar amount, e.g. "$210,000", "$190,000", "$1.5M", "$49". */
-  money: /\$\s?\d[\d,]*(?:\.\d+)?\s?(?:k|K|m|M)?\b/g,
-  /** Structural evidence of genuine personal compensation: an offer letter/contract, or a W-2/pay stub. */
-  offerDocs: /\b(offer letter|employment (?:agreement|offer|contract)|signed offer|W-2|W2|pay ?stub)\b/i,
-  /** Equity or stock actually granted/awarded/issued to a person, as distinct from a generic mention of "equity" or "stock". */
-  equityGrant: /\b(equity grant|stock grant|option grant|(?:granted|awarded|issued|vesting)\b[^\n]{0,40}\b(?:shares|equity|stock options?|options)\b)\b/i,
-  /** A negation word ("don't", "no", "never", ...), used to check whether it directly governs a nearby pay term. */
-  negation: /\b(?:don'?t|does\s?n'?t|doesn'?t|do\s?n'?t|no|not|never|isn'?t|aren'?t)\b/gi,
-  /** Bare "compensation" in any use -- ambiguous, never strong on its own (constraint 4: no committee/plan carve-outs to keep the trap safe). */
-  compensationWord: /\bcompensation\b/i,
-  /** Salary described as a market benchmark, not this person's pay. */
-  salaryBenchmark: /\b(?:salary|compensation)\b[^\n]{0,20}\b(?:benchmarks?|surveys?|data)\b|\bmarket\s+salary\b/i,
-  /**
-   * "offer"/"offered"/"offers" followed by a dollar amount within the same sentence (no `.!?` or
-   * newline between them), without a salary/base word (that combination is strong, handled
-   * separately). Forward-only and sentence-scoped so an unrelated dollar amount earlier in the
-   * text (e.g. a revenue figure) can never be read as tied to a later, unrelated "offer".
-   */
-  offerWithAmount: /\boffer(?:ed|s)?\b[^.!?\n]{0,40}\$\s?\d/i,
-  /** Generic stock/equity/shares mention, not a grant issued to a person. */
-  equityMention: /\b(stock|equity|shares?)\b/i,
 } as const;
 
-const STRONG_WINDOW = 60;
+// ---------------- pay evidence (PRD 5.1 #8, 5.5 T-revenue-not-pay) ----------------
+//
+// Sentence-scoped, not character-window: every check below runs against one sentence at a time
+// (see `splitSentences`), so an unrelated amount or business-money word in a different sentence
+// can never taint a genuine pay statement, and a genuine pay statement can never leak strength
+// into an adjacent revenue sentence. Splitting is punctuation-based but never breaks a decimal
+// amount like "$1.5M" or "0.5%".
+
+/** A dollar amount, e.g. "$210,000", "$190,000", "$1.5M", "$49", "$0". */
+const MONEY_RE = /\$\s?\d[\d,]*(?:\.\d+)?\s?(?:k|K|m|M)?\b/g;
+
+/** True when `sentence` contains a dollar amount that is not exactly zero. */
+function hasNonZeroMoney(sentence: string): boolean {
+  MONEY_RE.lastIndex = 0;
+  for (let m = MONEY_RE.exec(sentence); m; m = MONEY_RE.exec(sentence)) {
+    const n = Number(m[0].replace(/[$,\skKmM]/g, ''));
+    if (n > 0) return true;
+  }
+  return false;
+}
 
 /**
- * True when a negation word directly governs the pay term at `index` in `text`: the negation is
- * within the 2 words immediately before the term, with no comma, semicolon, colon or clause
- * punctuation between them. "No equity, just a base salary of $180,000" is NOT governed (the
- * comma after "equity" breaks it); "No salary is offered" IS governed.
+ * A personal pay term (PRD 5.1 #8): salary, base pay/salary, a "$X base"/"base of $X" pairing,
+ * annual pay, "pay of", "paid you/her/him", "will pay you", wages, "compensation of $X", W-2, pay
+ * stub, offer letter or employment agreement. Equity/stock/option grants are handled separately
+ * (`equityGrantToPerson`) because they additionally require a person recipient.
  */
-function isDirectlyNegated(text: string, index: number): boolean {
-  const start = Math.max(0, text.lastIndexOf('\n', index) + 1, index - 40);
-  const before = text.slice(start, index);
-  let lastNeg: RegExpExecArray | null = null;
-  PATTERNS.negation.lastIndex = 0;
-  for (let m = PATTERNS.negation.exec(before); m; m = PATTERNS.negation.exec(before)) lastNeg = m;
-  if (!lastNeg) return false;
-  const between = before.slice(lastNeg.index + lastNeg[0].length);
+const PAY_TERM =
+  /\b(?:base\s+(?:pay|salary)|salary|annual\s+pay|pay\s+of|paid\s+(?:you|her|him)|will\s+pay\s+you|wages?|compensation\s+of\s*\$|w-?2|pay\s?stub|offer\s+letter|employment\s+agreement)\b/gi;
+
+/** "$190,000 base" or "base of $190,000" -- bare "base" used as pay shorthand. */
+const BASE_AMOUNT_RE = /\$\s?\d[\d,]*(?:\.\d+)?\s?(?:k|K|m|M)?\s+base\b|\bbase\s*(?::|of|=)\s*\$\s?\d/gi;
+
+/** Doc-type pay terms that count as strong even without a stated amount (PRD 5.1 #8). */
+const AMOUNT_EXEMPT_TERM = /\b(w-?2|pay\s?stub|offer\s+letter)\b/i;
+
+/** Business-money words: any of these in the sentence rule out strong personal pay (constraint 4). */
+const BUSINESS_MONEY_RE =
+  /\b(revenue|ARR|MRR|sales|costs?|expenses?|budget|burn|payroll|investors?|raised|round|valuation|customers?|users?|market|benchmarks?|surveys?|median|average)\b/i;
+
+/** A negation ("not", "never", "haven't", "without", "zero", "$0", ...) within 3 words before `index`. */
+function isNegatedBefore(sentence: string, index: number): boolean {
+  const before = sentence.slice(0, index);
+  const negRe = /\b(?:not|never|no|haven'?t|hasn'?t|didn'?t|without|zero)\b|\$0\b/gi;
+  let last: RegExpExecArray | null = null;
+  for (let m = negRe.exec(before); m; m = negRe.exec(before)) last = m;
+  if (!last) return false;
+  const between = before.slice(last.index + last[0].length);
   if (/[,.;:\n]/.test(between)) return false;
   const words = between.trim().split(/\s+/).filter(Boolean);
-  return words.length <= 2;
+  return words.length <= 3;
 }
 
-/** True when a strong pay word (salary/base pay/base salary) has a money amount within STRONG_WINDOW chars on the same line, in either order, and is not directly negated. */
-function hasStrongSalaryMoneyPair(text: string): boolean {
-  const payMatches: RegExpExecArray[] = [];
-  PATTERNS.strongPayWord.lastIndex = 0;
-  for (let m = PATTERNS.strongPayWord.exec(text); m; m = PATTERNS.strongPayWord.exec(text)) payMatches.push(m);
-  if (payMatches.length === 0) return false;
-
-  const moneyMatches: RegExpExecArray[] = [];
-  PATTERNS.money.lastIndex = 0;
-  for (let m = PATTERNS.money.exec(text); m; m = PATTERNS.money.exec(text)) moneyMatches.push(m);
-  if (moneyMatches.length === 0) return false;
-
-  const sameLine = (a: number, b: number) => !text.slice(Math.min(a, b), Math.max(a, b)).includes('\n');
-  // A real sentence break: "." followed by whitespace then a capital letter. A bare abbreviation
-  // period ("Inc.", "U.S.") is never followed by whitespace+capital in these corpora ("Inc. $190,000",
-  // "U.S. base salary" -- lowercase after), so this doesn't need a special-cased abbreviation list.
-  const noSentenceBreakBetween = (a: number, b: number) => {
-    const [lo, hi] = a < b ? [a, b] : [b, a];
-    return !/\.\s+[A-Z]/.test(text.slice(lo, hi));
-  };
-
-  for (const pay of payMatches) {
-    if (isDirectlyNegated(text, pay.index)) continue;
-    // "Salary benchmarks for the market are $150k" describes the field, not this person -- never strong.
-    const localWindow = text.slice(Math.max(0, pay.index - 20), pay.index + 40);
-    if (PATTERNS.salaryBenchmark.test(localWindow)) continue;
-    for (const money of moneyMatches) {
-      if (
-        Math.abs(money.index - pay.index) <= STRONG_WINDOW &&
-        sameLine(pay.index, money.index) &&
-        noSentenceBreakBetween(pay.index, money.index)
-      ) {
-        return true;
-      }
-    }
+/**
+ * True when an equity/stock/option grant in `sentence` is addressed to a person -- "you"/"her"/
+ * "him"/"the founder", the founder's own name (if passed), or a leading "<Name> was granted ..."
+ * subject -- rather than to investors, employees or customers in general. A grant to a business
+ * recipient like "investors" is already excluded via `BUSINESS_MONEY_RE`; this only needs to keep
+ * a bare "we issued stock to employees" out.
+ */
+function equityGrantToPerson(sentence: string, founderName?: string): boolean {
+  if (!/\b(?:granted|issued|awarded)\b/i.test(sentence)) return false;
+  if (!/\b(?:equity|stock|shares?|options?)\b/i.test(sentence)) return false;
+  if (/\b(?:you|her|him|the founder)\b/i.test(sentence)) return true;
+  if (founderName) {
+    const first = founderName.trim().split(/\s+/)[0];
+    if (first && new RegExp(`\\b${first}\\b`, 'i').test(sentence)) return true;
   }
+  // "<Name> was granted/issued/awarded ..." -- the grantee is the sentence's own subject.
+  if (/^[A-Z][a-zA-Z'.-]*\s+(?:was\s+|is\s+|has\s+been\s+)?(?:granted|issued|awarded)\b/.test(sentence.trim())) return true;
   return false;
 }
 
-/** "$190,000 base" or "base of $190,000", where "base" is not a customer/user/install/revenue base. */
-function hasBaseAmountPair(text: string): boolean {
-  PATTERNS.baseAmount.lastIndex = 0;
-  for (let m = PATTERNS.baseAmount.exec(text); m; m = PATTERNS.baseAmount.exec(text)) {
+/**
+ * True when `sentence` is one sentence carrying strong, unambiguous evidence of the *founder's
+ * own* pay: a personal pay term (or a person-addressed equity grant), a non-zero amount (or a
+ * doc-type term that counts without one), no business-money words, and no governing negation.
+ * Strict by design (constraint 4, R1): every one of these narrows the match, never widens it.
+ */
+export function strongPaySentence(sentence: string, founderName?: string): boolean {
+  if (BUSINESS_MONEY_RE.test(sentence)) return false;
+
+  const termMatches: RegExpExecArray[] = [];
+  PAY_TERM.lastIndex = 0;
+  for (let m = PAY_TERM.exec(sentence); m; m = PAY_TERM.exec(sentence)) termMatches.push(m);
+  BASE_AMOUNT_RE.lastIndex = 0;
+  const baseMatches: RegExpExecArray[] = [];
+  for (let m = BASE_AMOUNT_RE.exec(sentence); m; m = BASE_AMOUNT_RE.exec(sentence)) baseMatches.push(m);
+
+  const nonZero = hasNonZeroMoney(sentence);
+
+  for (const m of termMatches) {
+    if (isNegatedBefore(sentence, m.index)) continue;
+    if (nonZero || AMOUNT_EXEMPT_TERM.test(m[0])) return true;
+  }
+  for (const m of baseMatches) {
     const baseAt = m.index + m[0].toLowerCase().indexOf('base');
-    const before = text.slice(Math.max(0, baseAt - 25), baseAt);
-    if (PATTERNS.businessBase.test(before)) continue;
-    if (isDirectlyNegated(text, baseAt)) continue;
+    if (isNegatedBefore(sentence, baseAt)) continue;
     return true;
   }
+  if (equityGrantToPerson(sentence, founderName) && nonZero) return true;
+
   return false;
 }
+
+/**
+ * Splits `text` into sentences on `.`, `!`, `?`, `;` and newlines, but never inside a decimal
+ * amount ("$1.5M", "0.5%") -- a `.` flanked by digits on both sides is not a sentence break.
+ */
+export function splitSentences(text: string): string[] {
+  const sentences: string[] = [];
+  let start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\n' || c === '!' || c === '?' || c === ';') {
+      sentences.push(text.slice(start, i));
+      start = i + 1;
+    } else if (c === '.') {
+      const prev = text[i - 1];
+      const next = text[i + 1];
+      if (prev && /\d/.test(prev) && next && /\d/.test(next)) continue; // decimal point
+      sentences.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  if (start < text.length) sentences.push(text.slice(start));
+  return sentences.map((s) => s.trim()).filter(Boolean);
+}
+
+/** Broad pay-ish vocabulary for the 'ambiguous' tier -- deliberately wide (constraint 4: real pay must never fall through to 'none'). */
+const AMBIGUOUS_PAY_RE =
+  /\b(salary|base|pay|paid|wages?|earns?|earned|earning|earnings|income|compensation|comp|stipend|bonus|stock|equity|shares?|options?|offer(?:ed|s)?|w-?2|pay\s?stub|payroll|1099)\b/i;
 
 export type PayEvidence = 'strong' | 'ambiguous' | 'none';
 
 /**
- * Three-tier personal-pay detection (PRD 5.1 #8, 5.5 T-revenue-not-pay). Character-window based,
- * not clause-split, so abbreviations like "Inc." and "U.S." and amounts like "$1.5M" can never
- * break matching (R1). Mistakes degrade safely: over-broad "ambiguous" vocabulary routes to
- * needs_attorney rather than either silently exempting the trap (over-exemption) or silently
- * rejecting genuine pay (under-match).
+ * Three-tier personal-pay detection (PRD 5.1 #8, 5.5 T-revenue-not-pay). Sentence-scoped so a
+ * revenue figure or a "salary" mention in one sentence can never pair with an amount or vocabulary
+ * word in another (R1/F1). Mistakes degrade safely: 'strong' is strict and never fires on business
+ * money; 'ambiguous' is broad and routes to needs_attorney rather than silently rejecting real pay
+ * (F2) or silently exempting the trap on revenue text (F1).
  *
- * strong: salary/base pay/base salary paired with a nearby amount (either order, not directly
- *   negated); an offer letter/employment agreement/contract/signed offer/W-2/pay stub; or an
- *   equity/stock/option grant issued to a person.
- * ambiguous: any other pay-ish vocabulary that isn't strong -- compensation (any use), salary
- *   without an amount, salary benchmarks/surveys/data, offer/offered with an amount but no
- *   salary/base word, stock/equity/shares mentions, or a negated pay term.
+ * strong: some sentence in the text is `strongPaySentence`.
+ * ambiguous: no sentence is strong, but the text contains pay-ish vocabulary anywhere.
  * none: no pay-ish vocabulary at all.
  */
-export function payEvidence(text: string): PayEvidence {
-  if (hasStrongSalaryMoneyPair(text)) return 'strong';
-  if (hasBaseAmountPair(text)) return 'strong';
-  if (PATTERNS.offerDocs.test(text)) return 'strong';
-  if (PATTERNS.equityGrant.test(text)) return 'strong';
-
-  if (PATTERNS.compensationWord.test(text)) return 'ambiguous';
-  if (PATTERNS.salaryBenchmark.test(text)) return 'ambiguous';
-  PATTERNS.strongPayWord.lastIndex = 0;
-  if (PATTERNS.strongPayWord.test(text)) return 'ambiguous'; // bare salary/base word, no amount (or negated)
-  if (PATTERNS.offerWithAmount.test(text)) return 'ambiguous';
-  if (PATTERNS.equityMention.test(text)) return 'ambiguous';
-
+export function payEvidence(text: string, founderName?: string): PayEvidence {
+  const sentences = splitSentences(text);
+  if (sentences.some((s) => strongPaySentence(s, founderName))) return 'strong';
+  if (AMBIGUOUS_PAY_RE.test(text)) return 'ambiguous';
   return 'none';
 }
 
@@ -366,12 +383,12 @@ const RULES: ExplicitRule[] = [
   },
   {
     id: 'T-revenue-not-pay',
-    apply(item, cls) {
+    apply(item, cls, profile) {
       if (cls.kind !== 'remuneration') return null;
       const text = fullText(item);
       const q = quoteFor(text, PATTERNS.revenue);
       if (!q) return null;
-      const evidence = payEvidence(text);
+      const evidence = payEvidence(text, profile.name);
       if (evidence === 'strong') return null; // trap doesn't fire; other rules and the model decide
       if (evidence === 'ambiguous') {
         return mapping(
@@ -426,20 +443,35 @@ export function enforceInvariants(m: Mapping, item: RedactedItem, profile: Found
     out.criteria.includes(8) &&
     PATTERNS.revenue.test(text) &&
     !PATTERNS.funding.test(text) &&
-    !PATTERNS.equity.test(text) &&
-    !PATTERNS.futurePay.test(text)
+    !PATTERNS.equity.test(text)
   ) {
-    const evidence = payEvidence(text);
-    if (evidence === 'none') {
-      drop(8, 'Company revenue alone is never personal remuneration (T-revenue-not-pay).');
-    } else if (evidence === 'ambiguous') {
-      // Keep the criteria (as X-artistic-athletic-eb1a-only and similar invariants do) but
-      // downgrade the status: an attorney, not the model, decides whether the pay mention is real.
-      out.status = 'needs_attorney';
-      out.eb1a_status = 'needs_attorney';
-      out.reason = `${out.reason} Revenue alongside an unclear pay mention; an attorney decides whether any of it is personal remuneration (T-revenue-not-pay).`.trim();
+    // Deliberately NOT excluded here: PATTERNS.futurePay ("offer letter"/"employment agreement"/
+    // "consulting agreement"). Bare presence of that vocabulary is not proof the pay is the
+    // founder's own (F1: "We signed an employment agreement with our first hire."); the
+    // strongPaySentence/payEvidence checks below already give a genuine offer letter its full
+    // amount-exempt strength, so this backstop does not need a separate bypass for it.
+    // Check the model's own cited quote first -- the exact sentence it read as pay evidence. If
+    // the quote itself isn't strong, the model may have cited the wrong sentence even though the
+    // text elsewhere is genuinely strong; either way that is an attorney call, not a silent keep.
+    const quoteStrong = strongPaySentence(out.quote, profile.name);
+    if (!quoteStrong) {
+      const evidence = payEvidence(text, profile.name);
+      if (evidence === 'none') {
+        drop(8, 'Company revenue alone is never personal remuneration (T-revenue-not-pay).');
+      } else {
+        // 'ambiguous', or 'strong' elsewhere in the text but not in the cited quote: keep the
+        // criteria (as X-artistic-athletic-eb1a-only and similar invariants do) but downgrade the
+        // status -- an attorney, not the model, decides whether the pay mention is real.
+        out.status = 'needs_attorney';
+        out.eb1a_status = 'needs_attorney';
+        const why =
+          evidence === 'strong'
+            ? 'The cited quote is not itself strong personal-pay evidence, even though the text elsewhere is; an attorney should confirm (T-revenue-not-pay).'
+            : 'Revenue alongside an unclear pay mention; an attorney decides whether any of it is personal remuneration (T-revenue-not-pay).';
+        out.reason = `${out.reason} ${why}`.trim();
+      }
     }
-    // evidence === 'strong': keep #8 as-is.
+    // quoteStrong: keep #8 as-is.
   }
   if (out.criteria.length === 0 && out.eb1a_criteria.length === 0 && out.status !== 'rejected') {
     out.status = 'rejected';
