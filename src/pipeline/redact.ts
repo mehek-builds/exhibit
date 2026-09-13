@@ -12,8 +12,64 @@ interface Pattern {
 
 const PATTERNS: Pattern[] = [
   { type: 'passport', re: /(passport(?:\s*(?:no\.?|number|num|#))?\s*[:#-]?\s*)([A-Z]{0,2}\d{6,9})\b/gi, group: 2 },
-  { type: 'a_number', re: /\b(A[-# ]?\d{3}[- ]?\d{3}[- ]?\d{3})\b/g, group: 1 },
-  { type: 'a_number', re: /(alien (?:registration )?(?:no\.?|number)\s*[:#-]?\s*)(A?\d{8,9})\b/gi, group: 2 },
+  // USCIS A-numbers are 7-9 digits, almost always written with an A prefix (A12345678,
+  // A-012-345-678, A 012 345 678, A# 123456789). Ambiguity is resolved by the SHAPE of the digit
+  // group, not by the word preceding the "A":
+  //   - contiguous 7-9 digits, or the canonical 3-3-3 grouping, are unambiguous A-number shapes and
+  //     are always redacted no matter what precedes them or what glues the "A" to the digits
+  //     (space, "-", or "#") -- e.g. "Exhibit A 012345678", "Section A 123456789",
+  //     "Exhibit A-012-345-678".
+  //   - a "-"/"#" glue in front of a looser 2-3-3 or 1-3-3 grouping is still unambiguous (the glue
+  //     itself marks it as an A-number) and is always redacted -- e.g. "Exhibit A-12-345-678".
+  //   - only "A" + a plain space + a 2-3-3 or 1-3-3 grouping is truly ambiguous with phrases like
+  //     "Series A 12 345 678" (funding round) or "Plan A 555-1234" (phone number), so that form
+  //     alone is excluded when preceded by an ordinary funding/label word.
+  // Dates (e.g. "A-2026-09-13", a 4-2-2 shape) and phone numbers (e.g. "A-555-1234", a 3-4 shape)
+  // never match any of the shapes below, so they are never treated as A-numbers.
+  {
+    // Unambiguous: A directly attached to 7-9 digits (A12345678).
+    type: 'a_number',
+    re: /\b(A\d{6,8}\d)(?!\d)\b/g,
+    group: 1,
+  },
+  {
+    // Unambiguous: A + space/"-"/"#" + contiguous 7-9 digits (no internal grouping), whatever the
+    // preceding word -- "Exhibit A 012345678", "Section A 123456789", "A-012345678", "A#123456789".
+    type: 'a_number',
+    re: /\b(A[-# ]\d{7,9})(?!\d)\b/g,
+    group: 1,
+  },
+  {
+    // Unambiguous: the canonical 3-3-3 grouping after A + space/"-"/"#" is always redacted, even
+    // after a label word. Under-redaction is the worse error (constraint 8), and look-alikes are
+    // shaped differently ("Series A 12 345 678" is 2-3-3, "Plan A 555-1234" is 3-4).
+    type: 'a_number',
+    re: /\b(A[-# ]\d{3}[- ]\d{3}[- ]\d{3})(?!\d)\b/g,
+    group: 1,
+  },
+  {
+    // Unambiguous: A followed directly by "-" or "#" (no space) then a looser 2-3-3 or 1-3-3
+    // grouping. The dash/hash glue itself disambiguates it from a label word ("Exhibit A-12-345-678").
+    type: 'a_number',
+    re: /\b(A[-#]\d{1,2}[- ]\d{3}[- ]\d{3})(?!\d)\b/g,
+    group: 1,
+  },
+  {
+    // Ambiguous: A + plain space + a looser 2-3-3 or 1-3-3 grouping (no "-"/"#" glue). Excluded
+    // only when it follows an ordinary funding/label word, where the letter is a grade/round
+    // marker rather than an A-number prefix (e.g. "Series A 12 345 678").
+    type: 'a_number',
+    re: /(?<!Series )(?<!Round )(?<!Plan )(?<!Grade )(?<!Class )(?<!Type )(?<!Tier )(?<!Exhibit )(?<!Option )(?<!Group )(?<!Section )(?<!Phase )(?<!Level )(?<!Batch )\b(A \d{1,2}[- ]\d{3}[- ]\d{3})(?!\d)\b/g,
+    group: 1,
+  },
+  // Labeled context: a recognized A-number label followed by 7-9 digits, with or without an "A"
+  // prefix. This is what lets "Alien Registration Number: 12345678" or "USCIS #: 123-456-789"
+  // redact even when the digits themselves carry no "A" prefix.
+  {
+    type: 'a_number',
+    re: /((?:A[-\s]?Number|A#|USCIS\s*#|alien\s+(?:registration\s+)?(?:no\.?|number))\s*[:#-]?\s*)(A?(?:\d[-# ]?){6,8}\d)(?!\d)\b/gi,
+    group: 2,
+  },
   { type: 'sevis', re: /\b(N\d{10})\b/g, group: 1 },
   { type: 'i94', re: /(I-?94(?:\s*(?:admission)?\s*(?:no\.?|number|#))?\s*[:#-]?\s*)(\d{9}[A-Z]\d|\d{11})\b/gi, group: 2 },
   {

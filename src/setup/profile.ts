@@ -12,12 +12,22 @@ export interface ScopeInfo {
   plain: string;
 }
 
+// PRD 4.1 step 1: "Connect Google with minimal scopes: Gmail and Calendar read-only; Drive
+// limited to files Exhibit creates." Gmail send is not one of the scopes requested at setup. It is
+// a separate grant (SEND_SCOPE below); there is no in-app prompt for it yet. Until it is granted,
+// every send fails safely: the run marks Gmail degraded and nothing leaves (src/letters/letters.ts).
 export const GOOGLE_SCOPES: ScopeInfo[] = [
   { scope: 'https://www.googleapis.com/auth/gmail.readonly', label: 'Gmail (read)', plain: 'Read your inbox and sent mail to find evidence. Never reads spam or trash.' },
-  { scope: 'https://www.googleapis.com/auth/gmail.send', label: 'Gmail (send, approved only)', plain: 'Send an email, but only one you approved first: a letter request, a digest to yourself, or an export to an attorney you named.' },
   { scope: 'https://www.googleapis.com/auth/calendar.readonly', label: 'Calendar (read)', plain: 'Read past events to find judging and speaking engagements. Never creates or changes events.' },
   { scope: 'https://www.googleapis.com/auth/drive.file', label: 'Drive (files it creates)', plain: 'Create and update the private Exhibit binder folder. Never touches files it did not create.' },
 ];
+
+/** A separate grant, not requested at setup. Without it no email can be sent at all. */
+export const SEND_SCOPE: ScopeInfo = {
+  scope: 'https://www.googleapis.com/auth/gmail.send',
+  label: 'Gmail (send, approved only)',
+  plain: 'Send an email, but only one you approved first: a letter request you replied APPROVE to, or a digest and approval request to yourself. Never to an attorney or a government address.',
+};
 
 const RecommenderSchema = z.object({
   name: z.string(),

@@ -2,6 +2,7 @@ import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { FixtureTransport } from '../src/integrations/types.js';
 import { createTwilioApi } from '../src/apps/live/twilio.js';
+import { createLiveTwilio } from '../src/apps/live/index.js';
 import { twilioSignature } from '../src/server/webhook.js';
 
 // FixtureTransport tests for the live Twilio adapter (send/list) and webhook signature validation
@@ -138,3 +139,37 @@ async function freePort(): Promise<number> {
     });
   });
 }
+
+describe('twilio live adapter: API key auth', () => {
+  it('authenticates with the API key while the URL names the Account SID', async () => {
+    const fixture = new FixtureTransport({
+      'POST https://api.twilio.com/2010-04-01/Accounts/AC123/Messages.json': {
+        status: 201,
+        headers: {},
+        body: JSON.stringify({ sid: 'SM1', from: 'whatsapp:+14155238886', to: 'whatsapp:+15550100142', body: 'hi', direction: 'outbound-api', date_sent: null, date_created: '2026-09-14T00:00:00Z' }),
+      },
+    });
+    const api = createTwilioApi({ accountSid: 'AC123', apiKeySid: 'SK456', apiKeySecret: 'sec', sender: 'whatsapp:+14155238886', transport: fixture });
+    await api.send({ to: '+15550100142', body: 'hi' });
+    expect(fixture.requests[0]!.headers?.authorization).toBe(`Basic ${Buffer.from('SK456:sec').toString('base64')}`);
+  });
+
+  it('throws when neither an auth token nor a full API key is given', () => {
+    expect(() => createTwilioApi({ accountSid: 'AC123', apiKeySid: 'SK456', sender: '+15550100000' })).toThrow(/authToken, or both apiKeySid and apiKeySecret/);
+  });
+});
+
+describe('createLiveTwilio', () => {
+  it('enables the channel with an API key in place of the auth token', () => {
+    const { api, feature } = createLiveTwilio({ TWILIO_ACCOUNT_SID: 'AC123', TWILIO_API_KEY_SID: 'SK456', TWILIO_API_KEY_SECRET: 'sec', TWILIO_SENDER: 'whatsapp:+14155238886' });
+    expect(api).not.toBeNull();
+    expect(feature).toEqual({ id: 'twilio', enabled: true, reason: 'enabled (API key)' });
+  });
+
+  it('stays disabled with a key SID but no secret and no token', () => {
+    const { api, feature } = createLiveTwilio({ TWILIO_ACCOUNT_SID: 'AC123', TWILIO_API_KEY_SID: 'SK456', TWILIO_SENDER: '+15550100000' });
+    expect(api).toBeNull();
+    expect(feature.enabled).toBe(false);
+    expect(feature.reason).toContain('TWILIO_AUTH_TOKEN (or TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET)');
+  });
+});

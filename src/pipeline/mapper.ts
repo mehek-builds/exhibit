@@ -75,6 +75,12 @@ export async function classifyAndMap(item: SourceItem, redacted: RedactedItem, d
 
   const explicit = applyExplicitRules(redacted, cls, profile, deps.ruleOptions);
   if (explicit) {
+    // H1: explicit-rule mappings are returned as-is, not run through enforceInvariants. The
+    // T-revenue-not-pay backstop there is tuned for a model's own free-text quote; X-future-pay
+    // and D-equity-comparable already decide their own status and recipient (via `payRecipient`
+    // scoped to the item body) before returning, so re-running the revenue backstop on their
+    // output only drops genuine founder pay next to a revenue figure (e.g. "your consulting
+    // agreement ... begins on May 1. Acme revenue is $10M.") to rejected.
     trace.span('map.explicit_rule', { app: item.app, id: item.id }, { rule_id: explicit.rule_id, criteria: explicit.criteria, status: explicit.status });
     return { cls, mapping: explicit, stage: 'done', hallucinations, modelCalls };
   }

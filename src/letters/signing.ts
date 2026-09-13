@@ -57,7 +57,12 @@ async function ensureLettersFolder(ctx: ExtensionContext): Promise<string> {
 
 export interface SigningExtensionOptions {
   client: DropboxSignClient;
-  /** true: enforce test mode + controlledEmails-only signers (constraint 18). */
+  /**
+   * true (the default): enforce constraint 18 -- test mode + controlledEmails-only signers.
+   * false only when the founder has explicitly opted into live signatures outside day mode
+   * (EXHIBIT_ALLOW_LIVE_SIGNATURES=1 with DROPBOX_SIGN_TEST_MODE=0); the confirmation + approval
+   * gates in processOne still apply unconditionally in every mode.
+   */
   dayMode: boolean;
 }
 
@@ -90,7 +95,7 @@ export function createSigningExtension(opts: SigningExtensionOptions): AgentExte
           to: [to],
           subject: `[Exhibit] Approve signature request ${row.letter_id}`,
           body: [
-            `${r.name} confirmed the final text of their letter for ${profile.name}. It is ready to go to Dropbox Sign for signature (test mode).`,
+            `${r.name} confirmed the final text of their letter for ${profile.name}. It is ready to go to Dropbox Sign for signature (${client.testMode ? 'test mode' : 'LIVE, legally binding'}).`,
             '',
             APPROVAL_INSTRUCTION,
             `APPROVE SIGN ${row.letter_id}`,
@@ -120,7 +125,7 @@ export function createSigningExtension(opts: SigningExtensionOptions): AgentExte
       }
 
       const draft = row.doc_id ? await apps.docs.getText(row.doc_id) : draftLetter(r, [], profile);
-      const pdf = renderPdf({ heading: `Recommendation letter: ${profile.name}`, subheading: `Signed by ${r.name} via Dropbox Sign (test mode)`, body: draft, highlights: [] });
+      const pdf = renderPdf({ heading: `Recommendation letter: ${profile.name}`, subheading: `Signed by ${r.name} via Dropbox Sign (${client.testMode ? 'test mode' : 'live'})`, body: draft, highlights: [] });
       const sent = await client.send({
         title: `Recommendation letter for ${profile.name}`,
         subject: `Please sign: recommendation letter for ${profile.name}`,

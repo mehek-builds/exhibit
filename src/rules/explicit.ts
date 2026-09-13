@@ -27,9 +27,293 @@ export const PATTERNS = {
   payToEnter: /\b(entry fee|nomination fee|self-nominat\w*|pay to (?:enter|apply))\b/i,
   openMembership: /\b(anyone can join|open to all|membership fee|join (?:our|the) community)\b/i,
   exhibition: /\b(exhibited at|on display at|gallery show|art (?:exhibition|showcase))\b/i,
+  artisticAthleticContribution: /\b(artistic|athletic)\b[^\n]{0,90}\b(original contribution|contribution of major significance|major significance)\b|\b(original contribution|contribution of major significance)\b[^\n]{0,90}\b(artistic|athletic)\b/i,
+  performingArtsSuccess: /\b(box office|ticket sales|gate receipts|record sales|streaming (?:numbers|figures))\b[^\n]{0,90}\b(commercial success|performing arts)\b|\b(commercial success)\b[^\n]{0,90}\b(performing arts|box office|ticket sales|record sales)\b/i,
   revenue: /\b(revenue|MRR|ARR|gross sales)\b/i,
   pay: /\b(salary|base pay|compensation|stock|equity|shares|SAFE|investment)\b/i,
 } as const;
+
+// ---------------- pay evidence (PRD 5.1 #8, 5.5 T-revenue-not-pay) ----------------
+//
+// Sentence-scoped, not character-window: every check below runs against one sentence at a time
+// (see `splitSentences`), so an unrelated amount or business-money word in a different sentence
+// can never taint a genuine pay statement, and a genuine pay statement can never leak strength
+// into an adjacent revenue sentence. Splitting is punctuation-based but never breaks a decimal
+// amount like "$1.5M" or "0.5%".
+
+/** A dollar amount, e.g. "$210,000", "$190,000", "$1.5M", "$49", "$0". */
+const MONEY_RE = /\$\s?\d[\d,]*(?:\.\d+)?\s?(?:k|K|m|M)?\b/g;
+
+/** True when `sentence` contains a dollar amount that is not exactly zero. */
+function hasNonZeroMoney(sentence: string): boolean {
+  MONEY_RE.lastIndex = 0;
+  for (let m = MONEY_RE.exec(sentence); m; m = MONEY_RE.exec(sentence)) {
+    const n = Number(m[0].replace(/[$,\skKmM]/g, ''));
+    if (n > 0) return true;
+  }
+  return false;
+}
+
+/**
+ * A personal pay term (PRD 5.1 #8): salary, base pay/salary, a "$X base"/"base of $X" pairing,
+ * annual pay, "pay of", "paid you/her/him", "will pay you", wages, "compensation of $X", W-2, pay
+ * stub, offer letter or employment agreement. Equity/stock/option grants are handled separately
+ * (`equityGrantToPerson`) because they additionally require a person recipient.
+ */
+const PAY_TERM =
+  /\b(?:base\s+(?:pay|salary)|salary|annual\s+pay|pay\s+of|paid\s+(?:you|her|him)|will\s+pay\s+you|wages?|compensation\s+of\s*\$|w-?2|pay\s?stub|offer\s+letter|employment\s+agreement)\b/gi;
+
+/** "$190,000 base" or "base of $190,000" -- bare "base" used as pay shorthand. */
+const BASE_AMOUNT_RE = /\$\s?\d[\d,]*(?:\.\d+)?\s?(?:k|K|m|M)?\s+base\b|\bbase\s*(?::|of|=)\s*\$\s?\d/gi;
+
+/** Doc-type pay terms that count as strong even without a stated amount (PRD 5.1 #8). */
+const AMOUNT_EXEMPT_TERM = /\b(w-?2|pay\s?stub|offer\s+letter)\b/i;
+
+/** Business-money words: any of these in the sentence rule out strong personal pay (constraint 4). */
+const BUSINESS_MONEY_RE =
+  /\b(revenue|ARR|MRR|sales|costs?|expenses?|budget|burn|payroll|investors?|raised|round|valuation|customers?|users?|market|benchmarks?|surveys?|median|average)\b/i;
+
+/** A negation ("not", "never", "haven't", "without", "zero", "$0", ...) within 3 words before `index`. */
+function isNegatedBefore(sentence: string, index: number): boolean {
+  const before = sentence.slice(0, index);
+  const negRe = /\b(?:not|never|no|haven'?t|hasn'?t|didn'?t|without|zero)\b|\$0\b/gi;
+  let last: RegExpExecArray | null = null;
+  for (let m = negRe.exec(before); m; m = negRe.exec(before)) last = m;
+  if (!last) return false;
+  const between = before.slice(last.index + last[0].length);
+  if (/[,.;:\n]/.test(between)) return false;
+  const words = between.trim().split(/\s+/).filter(Boolean);
+  return words.length <= 3;
+}
+
+/** Who a pay sentence's money belongs to (G1/G2, constraint 4): only the founder's own pay counts. */
+export type PayRecipient = 'founder' | 'other' | 'unknown';
+
+/** Second-person / explicit-founder language: "you", "your", "the founder". */
+const FOUNDER_PRONOUN_RE = /\b(?:you|your|the\s+founder)\b/i;
+
+/**
+ * Nouns that attribute pay or a contract to someone other than the founder: a new hire, an
+ * employee, a candidate, a contractor, a team member, the sales team, an advisor, an intern, "our
+ * first" (hire/engineer/...), or a co-founder (who isn't necessarily the founder herself).
+ * Deliberately NOT here: "board" and "investors" (J1). They approve or sit alongside the founder's
+ * own grant ("the board approved your option grant", "alongside our investors"), so naming them
+ * never means the grant belongs to someone else.
+ */
+const OTHER_PARTY_RE =
+  /\b(?:new\s+)?hires?\b|\bemployees?\b|\bcandidates?\b|\bcontractors?\b|\bteam\s+members?\b|\bsales\s+team\b|\badvisors?\b|\binterns?\b|\bour\s+first\b|\bco-?founders?\b/i;
+
+/**
+ * "engineer(s)" and "staff" as third-party nouns -- deliberately lower-case-only (no /i), so a
+ * Title-Case job title naming the founder's own role ("Staff Engineer" in an offer letter addressed
+ * to her, S16; "Chief of Staff") is never mistaken for a third party the way a lower-case "our
+ * first engineer" or "salaries for staff" is.
+ */
+const OTHER_PARTY_ENGINEER_RE = /\b(?:engineers?|staff)\b/;
+
+/**
+ * The board, investors, directors or a titled "Chief of Staff" / "Staff <Title>" as the RECIPIENT
+ * of a grant or contract (K1): "the equity grant for the Board", "an employment agreement with our
+ * new Chief of Staff". Only the recipient position counts ("for/to/with" plus an optional article
+ * and "new"), so the founder's own grant that the board approved, that sits alongside investors,
+ * or that names her title ("as Chief of Staff", "for your board seat") stays hers (J1).
+ */
+const RECIPIENT_ROLE_RE =
+  /\b(?:for|to|with)\s+(?:the\s+|our\s+|a\s+|an\s+)?(?:new\s+)?(?:board(?:\s+(?:members?|observers?|directors?))?|investors?|directors?|Chief\s+of\s+Staff|Staff(?:\s+[A-Z][a-z]+){1,2})\b/i;
+
+/**
+ * A pay-or-agreement anchor (H1/H2 fix): salary, base pay, pay, wages, compensation, an offer (or
+ * offer letter), an employment/consulting agreement, a contract, an equity/stock/option grant,
+ * shares, "paid", "will receive", "will earn". `payRecipient` only looks at the sentence(s)
+ * carrying one of these -- never an unrelated sentence elsewhere in the same item -- so a
+ * "you"/"your"/founder-name mention in a different sentence can never leak into a pay decision
+ * about someone else's contract or grant.
+ */
+const ANCHOR_RE =
+  /\b(?:salary|base\s+pay|pay|wages?|compensation|offer(?:\s+letter)?|employment\s+agreement|consulting\s+agreement|contract|equity\s+grant|stock\s+grant|option\s+grant|shares?|paid|will\s+receive|will\s+earn)\b/i;
+
+/**
+ * True when `sentence` mentions any part of `founderName` (first or last name/alias token, 2+
+ * letters) as a whole word.
+ */
+function mentionsFounderName(sentence: string, founderName?: string): boolean {
+  if (!founderName) return false;
+  for (const part of founderName.trim().split(/\s+/)) {
+    if (part.length < 2) continue;
+    const escaped = part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\b${escaped}\\b`, 'i').test(sentence)) return true;
+  }
+  return false;
+}
+
+/**
+ * Strips salutations and pleasantries that carry no recipient signal of their own (H2): a leading
+ * "Hi/Hello/Dear/Hey <Name>," greeting, "thank(s) (to) (all of) you", "for you", and a "you, our
+ * <noun>" appositive. Only used to keep those phatic uses of "you" from being mistaken for the
+ * founder being the payee; a genuine "your salary"/"you will be paid" survives untouched.
+ */
+function stripPleasantries(sentence: string): string {
+  let s = sentence.replace(/^\s*(?:Hi|Hello|Dear|Hey)\s+[A-Z][a-zA-Z'.-]*\s*,\s*/i, '');
+  s = s.replace(/\bthanks?\s+(?:to\s+)?(?:all\s+of\s+)?you\b/gi, ' ');
+  s = s.replace(/\bfor\s+you\b/gi, ' ');
+  s = s.replace(/\byou,\s*our\s+[a-z]+(?:\s+[a-z]+)?\b/gi, ' ');
+  // A job-title descriptor ("the role of Staff Engineer", "the position of Sales Director") names
+  // the role the founder herself is being offered, not a third-party recipient (S16) -- strip it
+  // before testing OTHER_PARTY_RE so a bare "engineer"/"candidate" in a title never trips it.
+  s = s.replace(/\b(?:the\s+)?(?:role|position|title)\s+of\s+[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3}/g, ' ');
+  // Same idea for a ", <Title Case job title>:" appositive right after a name ("Dara Voss, Staff
+  // Engineer:") -- also just naming the role, not a third-party recipient.
+  s = s.replace(/,\s*[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3}\s*:/g, ':');
+  return s;
+}
+
+/**
+ * Whose pay/contract/grant `text` is about (G1/G2, constraint 4): only the sentence(s) that carry
+ * a pay-or-agreement anchor (`ANCHOR_RE`) are considered, so an unrelated "you"/"your"/founder-name
+ * mention elsewhere in the item never counts. Within those anchor sentences (pleasantries and
+ * salutations stripped first), a third party always wins: if any anchor sentence attributes the
+ * pay/contract/grant to someone else (a new hire, an employee, the sales team, or the board,
+ * investors or a Chief of Staff as its recipient) the result is 'other', even when the same or
+ * another anchor sentence also addresses
+ * or names the founder. Otherwise 'founder' when some anchor sentence addresses or names her
+ * ("you"/"your", "the founder", or her name); 'unknown' when no anchor sentence gives either
+ * signal.
+ */
+export function payRecipient(text: string, founderName?: string): PayRecipient {
+  const all = splitSentences(text);
+  const anchored = all.filter((s) => ANCHOR_RE.test(s));
+  const sentences = anchored.length > 0 ? anchored : all.length > 0 ? all : [text];
+
+  let sawFounder = false;
+  for (const raw of sentences) {
+    const s = stripPleasantries(raw);
+    if (OTHER_PARTY_RE.test(s) || OTHER_PARTY_ENGINEER_RE.test(s) || RECIPIENT_ROLE_RE.test(s)) return 'other';
+    if (FOUNDER_PRONOUN_RE.test(s) || mentionsFounderName(s, founderName)) sawFounder = true;
+  }
+  return sawFounder ? 'founder' : 'unknown';
+}
+
+/**
+ * True when an equity/stock/option grant in `sentence` is addressed to a person -- "you"/"her"/
+ * "him"/"the founder", the founder's own name (if passed), or a leading "<Name> was granted ..."
+ * subject -- rather than to investors, employees or customers in general. A grant to a business
+ * recipient like "investors" is already excluded via `BUSINESS_MONEY_RE`; this only needs to keep
+ * a bare "we issued stock to employees" out.
+ */
+function equityGrantToPerson(sentence: string, founderName?: string): boolean {
+  if (!/\b(?:granted|issued|awarded)\b/i.test(sentence)) return false;
+  if (!/\b(?:equity|stock|shares?|options?)\b/i.test(sentence)) return false;
+  if (/\b(?:you|her|him|the founder)\b/i.test(sentence)) return true;
+  if (founderName) {
+    const first = founderName.trim().split(/\s+/)[0];
+    if (first && new RegExp(`\\b${first}\\b`, 'i').test(sentence)) return true;
+  }
+  // "<Name> was granted/issued/awarded ..." -- the grantee is the sentence's own subject.
+  if (/^[A-Z][a-zA-Z'.-]*\s+(?:was\s+|is\s+|has\s+been\s+)?(?:granted|issued|awarded)\b/.test(sentence.trim())) return true;
+  return false;
+}
+
+/**
+ * True when `sentence` is one sentence carrying strong, unambiguous evidence of the *founder's
+ * own* pay: a personal pay term (or a person-addressed equity grant), a non-zero amount (or a
+ * doc-type term that counts without one), no business-money words, and no governing negation.
+ * Strict by design (constraint 4, R1): every one of these narrows the match, never widens it.
+ */
+export function strongPaySentence(sentence: string, founderName?: string): boolean {
+  // G2: pay attributed to someone other than the founder (a new hire, an employee, an engineer,
+  // ...) is never her own remuneration, no matter how clean the amount/term pairing looks.
+  if (payRecipient(sentence, founderName) === 'other') return false;
+  if (BUSINESS_MONEY_RE.test(sentence)) return false;
+
+  const termMatches: RegExpExecArray[] = [];
+  PAY_TERM.lastIndex = 0;
+  for (let m = PAY_TERM.exec(sentence); m; m = PAY_TERM.exec(sentence)) termMatches.push(m);
+  BASE_AMOUNT_RE.lastIndex = 0;
+  const baseMatches: RegExpExecArray[] = [];
+  for (let m = BASE_AMOUNT_RE.exec(sentence); m; m = BASE_AMOUNT_RE.exec(sentence)) baseMatches.push(m);
+
+  const nonZero = hasNonZeroMoney(sentence);
+
+  for (const m of termMatches) {
+    if (isNegatedBefore(sentence, m.index)) continue;
+    if (nonZero || AMOUNT_EXEMPT_TERM.test(m[0])) return true;
+  }
+  for (const m of baseMatches) {
+    const baseAt = m.index + m[0].toLowerCase().indexOf('base');
+    if (isNegatedBefore(sentence, baseAt)) continue;
+    return true;
+  }
+  if (equityGrantToPerson(sentence, founderName) && nonZero) return true;
+
+  return false;
+}
+
+/**
+ * Common abbreviations that end in a period but never end a sentence (G2). Matched case-
+ * insensitively on a word boundary; every internal `.` is masked before splitting so a multi-dot
+ * abbreviation like "U.S." never contributes a split, then unmasked again per sentence.
+ */
+const ABBREV_RE = /\b(?:U\.S\.|U\.K\.|e\.g\.|i\.e\.|vs\.|Inc\.|Ltd\.|Corp\.|Dr\.|Mr\.|Ms\.|Mrs\.|St\.|No\.|approx\.|est\.)/gi;
+const ABBREV_SENTINEL = '';
+
+/**
+ * Splits `text` into sentences on `.`, `!`, `?`, `;` and newlines, but never inside a decimal
+ * amount ("$1.5M", "0.5%") -- a `.` flanked by digits on both sides is not a sentence break --
+ * and never right after a common abbreviation ("U.S.", "e.g.", "Inc.", ...; G2).
+ */
+export function splitSentences(text: string): string[] {
+  // Mask abbreviation periods with a same-length sentinel so string offsets/lengths are
+  // unchanged, then unmask per output sentence.
+  const masked = text.replace(ABBREV_RE, (m) => m.replace(/\./g, ABBREV_SENTINEL));
+  const sentences: string[] = [];
+  let start = 0;
+  for (let i = 0; i < masked.length; i++) {
+    const c = masked[i];
+    if (c === '\n' || c === '!' || c === '?' || c === ';') {
+      sentences.push(masked.slice(start, i));
+      start = i + 1;
+    } else if (c === '.') {
+      const prev = masked[i - 1];
+      const next = masked[i + 1];
+      if (prev && /\d/.test(prev) && next && /\d/.test(next)) continue; // decimal point
+      sentences.push(masked.slice(start, i));
+      start = i + 1;
+    }
+  }
+  if (start < masked.length) sentences.push(masked.slice(start));
+  return sentences
+    .map((s) => s.trim().replace(new RegExp(ABBREV_SENTINEL, 'g'), '.'))
+    .filter(Boolean);
+}
+
+/** Broad pay-ish vocabulary for the 'ambiguous' tier -- deliberately wide (constraint 4: real pay must never fall through to 'none'). */
+const AMBIGUOUS_PAY_RE =
+  /\b(salary|base|pay|paid|wages?|earns?|earned|earning|earnings|income|compensation|comp|stipend|bonus|stock|equity|shares?|options?|offer(?:ed|s)?|w-?2|pay\s?stub|payroll|1099)\b/i;
+
+export type PayEvidence = 'strong' | 'ambiguous' | 'none';
+
+/**
+ * Three-tier personal-pay detection (PRD 5.1 #8, 5.5 T-revenue-not-pay). Sentence-scoped so a
+ * revenue figure or a "salary" mention in one sentence can never pair with an amount or vocabulary
+ * word in another (R1/F1). Mistakes degrade safely: 'strong' is strict and never fires on business
+ * money; 'ambiguous' is broad and routes to needs_attorney rather than silently rejecting real pay
+ * (F2) or silently exempting the trap on revenue text (F1).
+ *
+ * strong: some sentence in the text is `strongPaySentence`.
+ * ambiguous: no sentence is strong, but the text contains pay-ish vocabulary anywhere.
+ * none: no pay-ish vocabulary at all.
+ */
+export function payEvidence(text: string, founderName?: string): PayEvidence {
+  const sentences = splitSentences(text);
+  if (sentences.some((s) => strongPaySentence(s, founderName))) return 'strong';
+  if (AMBIGUOUS_PAY_RE.test(text)) return 'ambiguous';
+  return 'none';
+}
+
+/** True when the text states genuine personal pay strongly enough to exempt T-revenue-not-pay entirely. Compatibility wrapper over `payEvidence`. */
+export function isPersonalPay(text: string): boolean {
+  return payEvidence(text) === 'strong';
+}
 
 function enabled(opts: RuleOptions | undefined, id: string): boolean {
   return !(opts?.disabled ?? []).includes(id);
@@ -104,9 +388,24 @@ const RULES: ExplicitRule[] = [
   },
   {
     id: 'D-equity-comparable',
-    apply(item) {
+    apply(item, _cls, profile) {
       const q = quoteFor(fullText(item), PATTERNS.equity);
       if (!q) return null;
+      // G1: a grant or plan named for someone else (an employee option pool, the sales team, ...)
+      // is not the founder's own equity, even sitting next to revenue in the same update. Scoped
+      // to the item's own body, not its subject line (a subject like "Offer letter: Staff
+      // Engineer" carries no recipient signal of its own and must never blank out the body's).
+      const recipient = payRecipient(item.text, profile.name);
+      if (recipient !== 'founder') {
+        return mapping(
+          [8],
+          'needs_attorney',
+          'D-equity-comparable',
+          'The grant does not clearly name the founder as the recipient; an attorney decides whether it is her remuneration.',
+          q,
+          { eb1a_status: 'needs_attorney' },
+        );
+      }
       return mapping([8], 'qualifying', 'D-equity-comparable', 'Founder equity in place of salary counts toward #8 as comparable evidence (5.5).', q, {
         comparable_for: [8],
       });
@@ -114,10 +413,25 @@ const RULES: ExplicitRule[] = [
   },
   {
     id: 'X-future-pay',
-    apply(item) {
+    apply(item, _cls, profile) {
       const text = fullText(item);
       const q = quoteFor(text, PATTERNS.futurePay);
       if (!q || !PATTERNS.futurePayTiming.test(text)) return null;
+      // G1: an employment/consulting agreement or offer letter for someone else's hire is not the
+      // founder's own future pay, even next to revenue figures in the same update. Scoped to the
+      // item's own body, not its subject line (a subject like "Offer letter: Staff Engineer"
+      // carries no recipient signal of its own and must never blank out the body's).
+      const recipient = payRecipient(item.text, profile.name);
+      if (recipient !== 'founder') {
+        return mapping(
+          [8],
+          'needs_attorney',
+          'X-future-pay',
+          'The agreement or offer letter does not clearly name the founder as the recipient; an attorney decides whether it is her remuneration.',
+          q,
+          { eb1a_status: 'needs_attorney' },
+        );
+      }
       return mapping([8], 'qualifying', 'X-future-pay', 'A signed contract for future pay counts for O-1A #8 ("will command"); EB-1A needs pay already earned, so it counts once paid (5.2).', q, {
         eb1a_status: 'building',
       });
@@ -198,12 +512,48 @@ const RULES: ExplicitRule[] = [
     },
   },
   {
+    id: 'X-artistic-athletic-eb1a-only',
+    apply(item) {
+      const q = quoteFor(fullText(item), PATTERNS.artisticAthleticContribution);
+      if (!q) return null;
+      return mapping([], 'needs_attorney', 'X-artistic-athletic-eb1a-only', 'Artistic or athletic original contributions count for EB-1A (v); the O-1A has no counterpart, so it needs the attorney (5.2).', q, {
+        eb1a_criteria: ['v'],
+        // "Major significance" is a judgment on the whole record, not a keyword; the attorney decides.
+        eb1a_status: 'needs_attorney',
+      });
+    },
+  },
+  {
+    id: 'X-performing-arts-eb1a-only',
+    apply(item) {
+      const q = quoteFor(fullText(item), PATTERNS.performingArtsSuccess);
+      if (!q) return null;
+      return mapping([], 'rejected', 'X-performing-arts-eb1a-only', 'Commercial success in the performing arts counts for EB-1A (x) only; the O-1A has no counterpart (5.2).', q, {
+        eb1a_criteria: ['x'],
+        // A mention of box office or sales is not proof of commercial success; the attorney decides.
+        eb1a_status: 'needs_attorney',
+      });
+    },
+  },
+  {
     id: 'T-revenue-not-pay',
-    apply(item, cls) {
+    apply(item, cls, profile) {
       if (cls.kind !== 'remuneration') return null;
       const text = fullText(item);
       const q = quoteFor(text, PATTERNS.revenue);
-      if (!q || /\b(salary|equity|stock|shares)\b/i.test(text)) return null;
+      if (!q) return null;
+      const evidence = payEvidence(text, profile.name);
+      if (evidence === 'strong') return null; // trap doesn't fire; other rules and the model decide
+      if (evidence === 'ambiguous') {
+        return mapping(
+          [8],
+          'needs_attorney',
+          'T-revenue-not-pay',
+          'Revenue alongside an unclear pay mention; an attorney decides whether any of it is personal remuneration (5.1 #8).',
+          q,
+          { eb1a_status: 'needs_attorney' },
+        );
+      }
       return mapping([8], 'rejected', 'T-revenue-not-pay', 'Company revenue is not personal remuneration (#8).', q);
     },
   },
@@ -241,6 +591,50 @@ export function enforceInvariants(m: Mapping, item: RedactedItem, profile: Found
   }
   if (enabled(opts, 'T-self-authored-not-press') && isSelfAuthored(item, profile)) {
     drop(3, "The founder's own writing is never press about her (T-self-authored-not-press).");
+  }
+  if (
+    enabled(opts, 'T-revenue-not-pay') &&
+    out.criteria.includes(8) &&
+    PATTERNS.revenue.test(text) &&
+    !PATTERNS.funding.test(text) &&
+    !PATTERNS.equity.test(text)
+  ) {
+    // Deliberately NOT excluded here: PATTERNS.futurePay ("offer letter"/"employment agreement"/
+    // "consulting agreement"). Bare presence of that vocabulary is not proof the pay is the
+    // founder's own (F1: "We signed an employment agreement with our first hire."); the
+    // strongPaySentence/payEvidence checks below already give a genuine offer letter its full
+    // amount-exempt strength, so this backstop does not need a separate bypass for it.
+    // Check the model's own cited quote first -- the exact sentence it read as pay evidence. If
+    // the quote itself isn't strong, the model may have cited the wrong sentence even though the
+    // text elsewhere is genuinely strong; either way that is an attorney call, not a silent keep.
+    let quoteStrong = strongPaySentence(out.quote, profile.name);
+    // G2 (model path): a strong-looking quote must also be the founder's own pay. With revenue in the
+    // item, a quote like "salary of $150k" that names nobody could be anyone's salary, so the quote
+    // or the sentence it sits in has to address or name the founder. Rule mappings (X-future-pay,
+    // D-equity-comparable) already gate the recipient on the item body themselves.
+    if (quoteStrong && out.decided_by === 'model') {
+      const host = splitSentences(text).find((s) => s.includes(out.quote.trim())) ?? out.quote;
+      const recipient = payRecipient(out.quote, profile.name) === 'founder' ? 'founder' : payRecipient(host, profile.name);
+      if (recipient !== 'founder') quoteStrong = false;
+    }
+    if (!quoteStrong) {
+      const evidence = payEvidence(text, profile.name);
+      if (evidence === 'none') {
+        drop(8, 'Company revenue alone is never personal remuneration (T-revenue-not-pay).');
+      } else {
+        // 'ambiguous', or 'strong' elsewhere in the text but not in the cited quote: keep the
+        // criteria (as X-artistic-athletic-eb1a-only and similar invariants do) but downgrade the
+        // status -- an attorney, not the model, decides whether the pay mention is real.
+        out.status = 'needs_attorney';
+        out.eb1a_status = 'needs_attorney';
+        const why =
+          evidence === 'strong'
+            ? 'The cited quote is not itself strong personal-pay evidence, even though the text elsewhere is; an attorney should confirm (T-revenue-not-pay).'
+            : 'Revenue alongside an unclear pay mention; an attorney decides whether any of it is personal remuneration (T-revenue-not-pay).';
+        out.reason = `${out.reason} ${why}`.trim();
+      }
+    }
+    // quoteStrong: keep #8 as-is.
   }
   if (out.criteria.length === 0 && out.eb1a_criteria.length === 0 && out.status !== 'rejected') {
     out.status = 'rejected';

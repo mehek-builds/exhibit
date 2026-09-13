@@ -1,6 +1,6 @@
 import type { DocsApi } from '../apps/types.js';
 import { TwinExpiredError, TwinStubError } from '../apps/types.js';
-import type { CandidateRow, Ledger } from '../ledger.js';
+import type { CandidateRow, Ledger, LetterRow } from '../ledger.js';
 import { O1_TO_EB1 } from '../rules/explicit.js';
 import type { Eb1Criterion, ExhibitRecord, FounderProfile, O1Criterion } from '../types.js';
 import { daysBetween, isoDay } from '../util.js';
@@ -42,7 +42,22 @@ export interface Scorecard {
   warnings: string[];
   goTrigger: { criteriaMet: number; thirdPartyPress: number; followers: number | null };
   gap: { targetFilingDate: string; monthsLeft: number; note: string };
-  letters: { drafted: number; heldCount: number; awaitingApproval: number; sent: number; dependent: number; independent: number; holdReasons: string[] };
+  letters: {
+    drafted: number;
+    heldCount: number;
+    awaitingApproval: number;
+    sent: number;
+    dependent: number;
+    independent: number;
+    holdReasons: string[];
+    /** PRD 6.8: the brief reports the hold rate and top hold reasons, computed from the letters ledger. */
+    evaluated: number;
+    holdRate: number | null;
+    topHoldReasons: { reason: string; count: number }[];
+  };
+  /** PRD 6.7: the gap against the 5 to 8 letter target and its dependent-versus-independent mix, counted
+   * from signed letters (6.14) -- a drafted or sent ask is not yet evidence the petition can use. */
+  lettersGap: string;
   notCounted: Record<string, number>;
   figures: { pending: number; approved: number; denied: number; gaps: string[] };
   sharingWarnings: string[];
@@ -147,6 +162,22 @@ function buildDiscovery(ledger: Ledger): NonNullable<Scorecard['discovery']> {
   return [...bySource.entries()].map(([source, v]) => ({ source, ...v }));
 }
 
+/** PRD 6.7: the gap against the 5 to 8 letter target and its dependent-versus-independent mix,
+ * counted by what's actually signed (6.14) -- a draft or a sent ask is not filing evidence yet, so
+ * counting those would overstate progress. Never says the founder qualifies (constraint 10). */
+function buildLettersGap(letters: LetterRow[], signatures: NonNullable<Scorecard['signatures']>): string {
+  const signedIds = new Set(signatures.rows.filter((r) => r.status === 'signed').map((r) => r.letterId));
+  const signed = letters.filter((l) => signedIds.has(l.letter_id));
+  const independentSigned = signed.filter((l) => l.relationship === 'independent').length;
+  const neededTotal = Math.max(0, 5 - signed.length);
+  const neededIndependent = Math.max(0, 1 - independentSigned);
+  if (neededTotal === 0) {
+    return `Letters gap: target met, ${signed.length} of 5 to 8 signed (${independentSigned} independent expert${independentSigned === 1 ? '' : 's'}).`;
+  }
+  const independentNote = neededIndependent > 0 ? `, including ${neededIndependent} independent expert${neededIndependent > 1 ? 's' : ''}` : '';
+  return `Letters gap: need ${neededTotal} more${independentNote} (${signed.length} of 5 to 8 signed).`;
+}
+
 /** Text thread (6.13) state from kv: paused-until date for letter requests, and whether the founder
  * texted STOP. */
 function buildTextThread(ledger: Ledger): NonNullable<Scorecard['textThread']> {
@@ -200,6 +231,26 @@ export interface ScorecardContext {
   sharingWarnings: string[];
 }
 
+/**
+ * PRD 6.7's own definition of "one exhibit from met": an O-1A criterion with zero qualifying exhibits
+ * but at least one `building`/`needs_attorney` candidate against it (a criterion is `met` the moment it
+ * has one qualifying exhibit, so this set is exactly the criteria one qualifying exhibit short).
+ * Exported so the letter trigger (PRD 6.8) reuses the scorecard's own computation instead of
+ * duplicating it.
+ */
+export function oneExhibitFromMetCriteria(ledger: Ledger): Set<O1Criterion> {
+  const exhibits = ledger.exhibits();
+  const candidates = ledger.candidates();
+  const qualifying = exhibits.filter((e) => e.status === 'qualifying');
+  const result = new Set<O1Criterion>();
+  for (const o1 of [1, 2, 3, 4, 5, 6, 7, 8] as O1Criterion[]) {
+    const o1Ex = qualifying.filter((e) => e.criteria.includes(o1));
+    const building = candidates.filter((c) => c.criteria.includes(o1) && (c.status === 'building' || c.status === 'needs_attorney'));
+    if (o1Ex.length === 0 && building.length > 0) result.add(o1);
+  }
+  return result;
+}
+
 export function buildScorecard(ledger: Ledger, profile: FounderProfile, now: Date, ctx: ScorecardContext): Scorecard {
   const exhibits = ledger.exhibits();
   const candidates = ledger.candidates();
@@ -230,12 +281,6 @@ export function buildScorecard(ledger: Ledger, profile: FounderProfile, now: Dat
   const o1Met = rows.filter((r) => r.o1State === 'met').length;
   const eb1Met = rows.filter((r) => r.eb1State === 'met').length + eb1Only.filter((r) => r.state === 'met').length;
 
-  const unmet = rows.filter((r) => r.o1State !== 'met');
-  const closest = [...unmet].sort((a, b) => (a.o1State === 'building' ? 0 : 1) - (b.o1State === 'building' ? 0 : 1) || PRIORITY.indexOf(a.o1) - PRIORITY.indexOf(b.o1))[0];
-  const nextAction = closest
-    ? `#${closest.o1} ${closest.name} is ${closest.o1State === 'building' ? 'one exhibit away' : 'empty'}: ${closest.nextAction}`
-    : (rows.find((r) => r.exhibits.length === 1)?.nextAction ?? 'every O-1A criterion has at least one exhibit; add second exhibits where a criterion has one');
-
   const warnings = finalMeritsWarnings(qualifying, rows, ledger, profile);
 
   const letters = ledger.letters();
@@ -245,6 +290,25 @@ export function buildScorecard(ledger: Ledger, profile: FounderProfile, now: Dat
   const monthsLeft = Math.round(daysBetween(target, now.toISOString()) / 30.4) * (Date.parse(target) >= now.getTime() ? 1 : -1);
   const notCounted: Record<string, number> = {};
   for (const c of candidates.filter((x) => x.status === 'rejected')) notCounted[c.mapping.rule_id] = (notCounted[c.mapping.rule_id] ?? 0) + 1;
+
+  const signatures = buildSignatures(ledger);
+  const heldLetters = letters.filter((l) => l.state === 'held');
+  const evaluatedLetters = letters.filter((l) => l.ws_decision !== null).length;
+  const holdReasonCounts = new Map<string, number>();
+  for (const l of heldLetters) for (const r of l.ws_reasons) holdReasonCounts.set(r, (holdReasonCounts.get(r) ?? 0) + 1);
+  const topHoldReasons = [...holdReasonCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([reason, count]) => ({ reason, count }));
+  const lettersGapNote = buildLettersGap(letters, signatures);
+  const signedIds = new Set(signatures.rows.filter((r) => r.status === 'signed').map((r) => r.letterId));
+  const lettersNeedMore = letters.filter((l) => signedIds.has(l.letter_id)).length < 5 || letters.filter((l) => signedIds.has(l.letter_id) && l.relationship === 'independent').length < 1;
+
+  const unmet = rows.filter((r) => r.o1State !== 'met');
+  const closest = [...unmet].sort((a, b) => (a.o1State === 'building' ? 0 : 1) - (b.o1State === 'building' ? 0 : 1) || PRIORITY.indexOf(a.o1) - PRIORITY.indexOf(b.o1))[0];
+  // Once every O-1A criterion has an exhibit and none is thin, letters are the closest remaining gap
+  // (PRD 6.7): surface that instead of the generic "every criterion covered" message.
+  const thinRow = rows.find((r) => r.exhibits.length === 1);
+  const nextAction = closest
+    ? `#${closest.o1} ${closest.name} is ${closest.o1State === 'building' ? 'one exhibit away' : 'empty'}: ${closest.nextAction}`
+    : (thinRow?.nextAction ?? (lettersNeedMore ? lettersGapNote : 'every O-1A criterion has at least one exhibit; add second exhibits where a criterion has one'));
 
   return {
     generatedAt: now.toISOString(),
@@ -272,7 +336,11 @@ export function buildScorecard(ledger: Ledger, profile: FounderProfile, now: Dat
       dependent: letters.filter((l) => l.relationship === 'dependent').length,
       independent: letters.filter((l) => l.relationship === 'independent').length,
       holdReasons: letters.filter((l) => l.state === 'held').flatMap((l) => l.ws_reasons.slice(0, 1).map((r) => `${l.letter_id}: ${r}`)),
+      evaluated: evaluatedLetters,
+      holdRate: evaluatedLetters ? heldLetters.length / evaluatedLetters : null,
+      topHoldReasons,
     },
+    lettersGap: lettersGapNote,
     notCounted,
     figures: {
       pending: figures.filter((f) => f.status === 'pending').length,
@@ -282,7 +350,7 @@ export function buildScorecard(ledger: Ledger, profile: FounderProfile, now: Dat
     },
     sharingWarnings: ctx.sharingWarnings,
     degraded: ctx.degraded,
-    signatures: buildSignatures(ledger),
+    signatures,
     translation: buildTranslation(ledger),
     tamperEvidence: buildTamperEvidence(ledger),
     discovery: buildDiscovery(ledger),
@@ -304,10 +372,23 @@ function finalMeritsWarnings(qualifying: ExhibitRecord[], rows: CriterionRow[], 
   }
   const thin = rows.filter((r) => r.exhibits.length === 1).map((r) => `#${r.o1}`);
   if (thin.length) warnings.push(`Thin criteria (met by one exhibit only): ${thin.join(', ')}.`);
+  // PRD 5.3 "no comparison to peers" plus the 6.11 figures table: every met criterion needs
+  // approved context figures about the outlet, program, event or market it rests on.
   const approvedFor = (c: O1Criterion) => ledger.figures({ status: 'approved' }).some((f) => f.criterion === c);
+  const PEER_FIGURE_LABEL: Record<O1Criterion, string> = {
+    1: 'selection rate',
+    2: 'acceptance rate',
+    3: 'readership figures',
+    4: 'submissions or participants figures',
+    5: 'adoption figures',
+    6: 'acceptance rate or impact measure',
+    7: 'organizational-distinction figures',
+    8: 'pay benchmark',
+  };
   const noPeers: string[] = [];
-  if (rows.find((r) => r.o1 === 8)?.o1State === 'met' && !approvedFor(8)) noPeers.push('#8 has no approved pay benchmark');
-  if (rows.find((r) => r.o1 === 1)?.o1State === 'met' && !approvedFor(1)) noPeers.push('#1 has no approved selection rate');
+  for (const r of rows) {
+    if (r.o1State === 'met' && !approvedFor(r.o1)) noPeers.push(`#${r.o1} has no approved ${PEER_FIGURE_LABEL[r.o1]}`);
+  }
   if (noPeers.length) warnings.push(`No comparison to peers: ${noPeers.join('; ')}.`);
   const self = qualifying.filter((e) => e.issuer && (e.issuer === profile.domain || e.issuer.endsWith(`.${profile.domain}`))).length;
   if (qualifying.length && self / qualifying.length > 0.5) warnings.push(`Self-sourced record: ${self} of ${qualifying.length} exhibits trace to the founder's own domain.`);
@@ -343,6 +424,15 @@ export function renderScorecard(s: Scorecard, profile: FounderProfile): string {
     '',
     `Letters: ${s.letters.drafted} drafted, ${s.letters.awaitingApproval} awaiting your approval, ${s.letters.sent} sent, ${s.letters.heldCount} held (target 5 to 8; dependent ${s.letters.dependent}, independent ${s.letters.independent}).`,
     ...s.letters.holdReasons.map((r) => `- held ${r}`),
+    s.lettersGap,
+    ...(s.letters.evaluated
+      ? [
+          `Worth-sending: ${s.letters.evaluated} letter request(s) evaluated, ${s.letters.heldCount} held (hold rate ${s.letters.holdRate !== null ? `${Math.round(s.letters.holdRate * 100)}%` : 'n/a'}).`,
+          ...(s.letters.topHoldReasons.length
+            ? [`- top hold reasons: ${s.letters.topHoldReasons.map((r) => `${r.reason} (${r.count}x)`).join('; ')}`]
+            : []),
+        ]
+      : []),
     '',
     `Context figures: ${s.figures.approved} approved, ${s.figures.pending} pending your review, ${s.figures.denied} denied.`,
     ...(s.figures.gaps.length ? ['Research gaps:', ...s.figures.gaps.map((g) => `- ${g}`)] : []),

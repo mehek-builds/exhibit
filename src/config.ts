@@ -81,7 +81,7 @@ interface TextChannelModule {
 }
 interface TextCommandsModule {
   HeuristicCommandParser: new () => unknown;
-  AnthropicCommandParser: new (apiKey: string, model?: string) => unknown;
+  AnthropicCommandParser: new (apiKey: string, graph: ReturnType<typeof loadGraph>, modelId?: string) => unknown;
 }
 interface StructuredModule {
   createStructuredResearch(opts: { adapters: VerifierAdapter[] }): unknown;
@@ -257,7 +257,7 @@ async function buildExtensions(env: NodeJS.ProcessEnv, features: FeatureReport[]
   features.push(twilioFeature);
   const [channelMod, commandsMod] = await Promise.all([tryModule<TextChannelModule>('./text/channel.js'), tryModule<TextCommandsModule>('./text/commands.js')]);
   if (channelMod && commandsMod && twilioApi) {
-    const parser = env.ANTHROPIC_API_KEY ? new commandsMod.AnthropicCommandParser(env.ANTHROPIC_API_KEY, env.EXHIBIT_MODEL ?? 'claude-sonnet-5') : new commandsMod.HeuristicCommandParser();
+    const parser = env.ANTHROPIC_API_KEY ? new commandsMod.AnthropicCommandParser(env.ANTHROPIC_API_KEY, loadGraph(), env.EXHIBIT_MODEL ?? 'claude-sonnet-5') : new commandsMod.HeuristicCommandParser();
     extensions.push(channelMod.createTextChannel({ parser }));
     features.push({ id: 'text-channel', enabled: true, reason: 'enabled' });
   } else {
@@ -276,13 +276,15 @@ async function buildExtensions(env: NodeJS.ProcessEnv, features: FeatureReport[]
     features.push({ id: 'integrity', enabled: false, reason: 'disabled: module not built' });
   }
 
-  // 4. signing (Dropbox Sign) -- test mode unless both DROPBOX_SIGN_TEST_MODE=0 and EXHIBIT_ALLOW_LIVE_SIGNATURES=1.
+  // 4. signing (Dropbox Sign) -- day mode (test mode + controlled signers only) unless both
+  // DROPBOX_SIGN_TEST_MODE=0 and EXHIBIT_ALLOW_LIVE_SIGNATURES=1 explicitly opt into live signatures.
   const [signingMod, dropboxSignMod] = await Promise.all([tryModule<SigningModule>('./letters/signing.js'), tryModule<DropboxSignModule>('./integrations/dropboxsign.js')]);
   if (signingMod && dropboxSignMod && env.DROPBOX_SIGN_API_KEY) {
-    const dayMode = env.DROPBOX_SIGN_TEST_MODE === '0' && env.EXHIBIT_ALLOW_LIVE_SIGNATURES === '1';
-    const client = dropboxSignMod.createDropboxSign({ apiKey: env.DROPBOX_SIGN_API_KEY, transport, testMode: !dayMode });
+    const liveSignaturesEnabled = env.DROPBOX_SIGN_TEST_MODE === '0' && env.EXHIBIT_ALLOW_LIVE_SIGNATURES === '1';
+    const dayMode = !liveSignaturesEnabled;
+    const client = dropboxSignMod.createDropboxSign({ apiKey: env.DROPBOX_SIGN_API_KEY, transport, testMode: dayMode });
     extensions.push(signingMod.createSigningExtension({ client, dayMode }));
-    features.push({ id: 'signing', enabled: true, reason: dayMode ? 'enabled (live signatures)' : 'enabled (test mode)' });
+    features.push({ id: 'signing', enabled: true, reason: liveSignaturesEnabled ? 'enabled (live signatures)' : 'enabled (test mode)' });
   } else {
     const why = !signingMod || !dropboxSignMod ? 'module not built' : 'DROPBOX_SIGN_API_KEY missing';
     features.push({ id: 'signing', enabled: false, reason: `disabled: ${why}` });

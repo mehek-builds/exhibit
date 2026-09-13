@@ -35,11 +35,12 @@ export function createLiveApps(env: NodeJS.ProcessEnv): Apps {
 
 /** Twilio (6.13): on only when the account SID, auth token and sender are all present. */
 export function createLiveTwilio(env: NodeJS.ProcessEnv): { api: ReturnType<typeof createTwilioApi> | null; feature: FeatureReport } {
-  const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token, TWILIO_SENDER: sender } = env;
-  if (!sid || !token || !sender) {
-    const missing = [!sid && 'TWILIO_ACCOUNT_SID', !token && 'TWILIO_AUTH_TOKEN', !sender && 'TWILIO_SENDER'].filter(Boolean).join(', ');
+  const { TWILIO_ACCOUNT_SID: sid, TWILIO_AUTH_TOKEN: token, TWILIO_API_KEY_SID: keySid, TWILIO_API_KEY_SECRET: keySecret, TWILIO_SENDER: sender } = env;
+  const apiKey = !!(keySid && keySecret);
+  if (!sid || !(token || apiKey) || !sender) {
+    const missing = [!sid && 'TWILIO_ACCOUNT_SID', !(token || apiKey) && 'TWILIO_AUTH_TOKEN (or TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET)', !sender && 'TWILIO_SENDER'].filter(Boolean).join(', ');
     return { api: null, feature: { id: 'twilio', enabled: false, reason: `disabled: ${missing} missing` } };
   }
-  const api = createTwilioApi({ accountSid: sid, authToken: token, sender, transport: new FetchTransport() });
-  return { api, feature: { id: 'twilio', enabled: true, reason: 'enabled' } };
+  const api = createTwilioApi({ accountSid: sid, authToken: token, apiKeySid: keySid, apiKeySecret: keySecret, sender, transport: new FetchTransport() });
+  return { api, feature: { id: 'twilio', enabled: true, reason: apiKey ? 'enabled (API key)' : 'enabled' } };
 }

@@ -85,6 +85,16 @@ function figuresSection(ledger: Ledger): string {
   return listFiguresText(pending, ledger);
 }
 
+/** PRD 4.1 step 3: "6 figures are waiting for your review: [link]" — a count and a link to the
+ * Sheet, never the per-figure identity numbers (FIG-/EX- ids) that the digest and text-approve
+ * flow use once the founder is already working the queue. */
+function firstScorecardFiguresLine(ledger: Ledger): string {
+  const pending = ledger.figures({ status: 'pending' });
+  const link = reviewSheetLink(ledger);
+  if (pending.length === 0) return `Nothing waiting for your review right now: ${link}`;
+  return `${pending.length} figure${pending.length === 1 ? '' : 's'} are waiting for your review: ${link}`;
+}
+
 function buildFirstScorecardText(sc: Scorecard, ledger: Ledger, now: Date): string {
   const total = ledger.exhibits().length;
   const parts = [
@@ -94,7 +104,7 @@ function buildFirstScorecardText(sc: Scorecard, ledger: Ledger, now: Date): stri
   ];
   const ts = timeSensitiveLine(ledger.candidates(), now);
   if (ts) parts.push(ts);
-  parts.push(figuresSection(ledger));
+  parts.push(firstScorecardFiguresLine(ledger));
   return parts.join(' ');
 }
 
@@ -126,6 +136,14 @@ async function deliver(ctx: ExtensionContext, kind: NotifyKind, body: string, fa
   const { ledger, profile, apps } = deps;
 
   if (ledger.get('texts_stopped') === '1') {
+    // E56: STOP mutes texts, but the weekly digest keeps arriving by email to the founder's own address.
+    const self = profile.emails[0];
+    if (kind === 'digest' && self) {
+      const sent = await apps.gmail.send({ to: [self], subject: '[Exhibit] Your Sunday digest', body });
+      ctx.trace.tool('gmail.send', { to: [self], kind: 'digest_email_after_stop' }, { id: sent.id });
+      ledger.event({ run_id: ctx.runId, trace_id: ctx.trace.traceId, kind: 'notification', detail: { kind, channel: 'email', decision: 'send', score: null, reasons: ['texts_stopped: digest by email'], sent: true, quiet_hours: false, window_closed: false }, at: now.toISOString() });
+      return { sent: true, deferred: false };
+    }
     ledger.event({ run_id: ctx.runId, trace_id: ctx.trace.traceId, kind: 'notification', detail: { kind, channel: 'sms', decision: 'hold', score: null, reasons: ['texts_stopped'], sent: false, quiet_hours: false, window_closed: false }, at: now.toISOString() });
     return { sent: false, deferred: false };
   }

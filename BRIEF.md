@@ -120,6 +120,8 @@ Mutation results (every mutation tried, whether it was killed or survived):
 | disable TX-verified-number (S20 must go red) | TX-verified-number | S20 | killed (went red as expected) | unknown number logged as ignored: {"sid":"SMin_0001","from":"+15559990000","body":"approve 1","command":"approve","args":[{"kind":"approve","figures":[1]}],"action":"parsed"} |
 | disable TX-confirm-irreversible (S20 must go red) | TX-confirm-irreversible | S20 | killed (went red as expected) | exactly one clarifying text across the whole run: ["I didn't understand \"ok do it\". Reply approve, deny <number> <reason>, pause until <date>, resume, next, status, stop, or start.","I don't have anything pending your yes right now."]; a confirmation was pending right after "approve all": null; more than one figure was still pending right after "approve all" (nothing applied yet): 0; pending figures dropped after "yes": 0 -> 0; exactly one confirmation text sent: 0 |
 | disable X-translation-opt-in (S24 must go red) | X-translation-opt-in | S24 | killed (went red as expected) | exactly one DeepL call: 2; no DeepL-derived draft for the not-opted-in French item: translation-draft.md; translation event for m-fr records opted_in: false, called: false: {"source":"gmail:m-fr","opted_in":true,"called":true,"chars":320} |
+| disable T-press-release + T-paid-placement (S1 must go red on the press-release trap) | T-press-release, T-paid-placement | S1 | killed (went red as expected) | Press release (gmail:m-pr): status: expected rejected, got qualifying; Press release (gmail:m-pr): eb1a_status: expected rejected, got qualifying; Press release (gmail:m-pr): never qualifying under {3}: status qualifying, criteria {3}; exactly 14 qualifying candidates: got 15: github:repo:loomwork/flakehound, github:review:r-orbit, item:captable.example|executed founder stock purchase agreement|2025-10-02, item:corpregistry.example|certificate of incorporation filed loomwork inc|2025-09-22, item:prwire.example|distributed loomwork launches flakehound 2 0|2026-08-20, item:safehub.example|congratulations your safe financing has closed|2026-03-05, judging:buildnight.example, judging:hackmesa.example, url:buildreport.example/interviews/dara-voss, url:devtoolsweekly.example/2026/03/loomwork-dara-voss-flaky-ci, url:forgeaccel.example/batches/f26, url:launchfest.example/2026/winners, url:ridgelinefellows.example/2026-fellows, url:shipitpod.example/episodes/212, url:signalnoise.example/2026/20-founders |
+| disable X-exhibition-eb1a-only (S16 must go red) | X-exhibition-eb1a-only | S16 | killed (went red as expected) | exhibition eb1a_criteria includes 'vii': ; exhibition eb1a_status qualifying: rejected; exhibition filed under 'eb1a-only/': undefined |
 | disable X-integrity-tamper-check (S22 verify must go red) | X-integrity-tamper-check | S22 | killed (went red as expected) | failed=[], passed=0 |
 | disable X-sign-both-approvals (signing must create a request after only one approval) | X-sign-both-approvals | S23 | killed (went red as expected) | state={"stage":"requested","approvalMsgId":"msg_sent_0066","requestId":"sigreq_0001"}, requests=["marco@hackmesa.example"] |
 
@@ -174,6 +176,7 @@ Method. worth-sending gates two kinds of message: letter requests to recommender
 | Sent (after approval) | 24 |
 | Revised then sent | 0 |
 | Held | 3 |
+| Hold rate | 3% (3 of 114) |
 | Top hold reasons | Timing is below the required minimum of 2/4. (3x) |
 | Emails in the Gmail twin without a matching send decision and approval | 0 (target 0) |
 | Proactive texts to the founder: evaluated, sent, held | 45, 42, 3 |
@@ -188,6 +191,7 @@ Changes during the build:
 | Change | Fragment | Dependent prompts listed | Scenarios re-run | Result |
 |---|---|---|---|---|
 | Accelerator acceptance counts under #1 and #2 (rule decision, 2026-09-13) | decisions-5-5 | letter-drafter, mapper, scorecard-writer | S1, S2, S3, S4, S6, S10, S11, S16 | 8/8 scenarios green |
+| Re-proved crosswalk | crosswalk | mapper, scorecard-writer | S16 | 1/1 scenarios green |
 
 ## 9. The loop, closed
 

@@ -63,6 +63,7 @@
 
   <h2>What Exhibit asks for, in plain words</h2>
   <div id="scopes"></div>
+  <p class="hint">Gmail send is not requested here. It is a separate permission you grant later, and it only ever sends email you approved: a letter request you replied APPROVE to, or a digest to yourself. Until you grant it, Exhibit sends nothing.</p>
 
   <h2>Your profile</h2>
   <p class="hint">Everything below stays on this page. Nothing here is sent anywhere; when you are done, copy the JSON at the bottom into your own <code>EXHIBIT_PROFILE</code> environment variable.</p>
@@ -132,6 +133,11 @@
       </div>
     </div>
 
+    <div class="notice">
+      <strong>Join the WhatsApp Sandbox</strong>
+      On Twilio's free trial, texts from Exhibit arrive over WhatsApp through a shared sandbox number. From the phone above, send the sandbox's join code (shown in your Twilio console, e.g. "join &lt;two-words&gt;") to that number in WhatsApp. Sending it also confirms this is your number.
+    </div>
+
     <fieldset>
       <legend>Quiet hours (no proactive texts sent in this window)</legend>
       <div class="row2">
@@ -164,7 +170,6 @@
 <script>
   var scopes = [
     { label: 'Gmail (read)', plain: 'Read your inbox and sent mail to find evidence. Never reads spam or trash.' },
-    { label: 'Gmail (send, approved only)', plain: 'Send an email, but only one you approved first: a letter request, a digest to yourself, or an export to an attorney you named.' },
     { label: 'Calendar (read)', plain: 'Read past events to find judging and speaking engagements. Never creates or changes events.' },
     { label: 'Drive (files it creates)', plain: 'Create and update the private Exhibit binder folder. Never touches files it did not create.' }
   ];
