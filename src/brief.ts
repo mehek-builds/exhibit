@@ -628,11 +628,19 @@ function reproduceSection(): string {
   const verifyExists = existsSync(join(process.cwd(), 'src', 'commands', 'verify.ts'));
   const lines = [
     'git clone https://github.com/mehek-builds/exhibit && cd exhibit && npm ci',
-    'npx tsx src/cli.ts eval --attempts 3     # runs the scenario matrix and writes reports/eval-latest.json',
-    'npx tsx src/cli.ts brief                 # regenerates this brief from reports/eval-latest.json',
+    'npm run demo                                    # full synthetic year, exported to out/demo',
+    'npm run eval -- --attempts 3                    # in-memory twins, seeded and graded from twin state',
+    'npm run mutate                                  # proves safety scenarios go red when their rules are disabled',
+    'npm run brief                                   # regenerates this brief from the latest reports',
   ];
-  if (verifyExists) lines.push('npx tsx src/cli.ts verify                # re-checks every binder file against its hash and OpenTimestamps proof');
-  return ['```bash', ...lines, '```'].join('\n');
+  if (verifyExists) lines.push('npm run verify -- --demo out/demo               # expected exit 1: names the demo artifact altered on purpose');
+  return [
+    '```bash',
+    ...lines,
+    '```',
+    '',
+    'For a live binder, copy `.env.example` to `.env`, provide the Google, GitHub, owner-email and profile values plus any optional integration keys, run `npm run exhibit -- run --live`, then run `npm run verify` without `--demo`.',
+  ].join('\n');
 }
 
 // ---------------- generate ----------------
