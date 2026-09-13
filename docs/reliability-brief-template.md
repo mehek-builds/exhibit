@@ -1,6 +1,6 @@
 ---
 title: Exhibit, system and reliability brief (hackathon submission draft)
-tags: [hackathon, exhibit, reliability-brief, arga-labs, lemma, userlens, clera]
+tags: [hackathon, exhibit, reliability-brief, arga-labs, userlens, clera]
 status: DRAFT written 2026-09-13 before the build. Every {{...}} is filled from the run ledger during the build. Nothing in a {{...}} may be estimated or typed by hand.
 companion: exhibit-prd-2026-09-13.md (sections 6.11, 6.12, 12, 12.6)
 ---
@@ -34,20 +34,20 @@ Built on the day: {{integrations_built}}. Specified but not built by submission:
 
 ## 3. How we know it works
 
-Four platforms, four questions. Each one's output feeds the next.
+Four checks, four questions. Each one's output feeds the next.
 
-| Question | Platform | Evidence below |
+| Question | Check | Evidence below |
 |---|---|---|
 | Does it do the right thing, and nothing else, before it touches a real inbox? | **Arga** twins, 3 graded attempts per scenario | Section 5 |
-| On real runs, does it follow its own rules, and what broke that no scenario predicted? | **Lemma** traces and issues | Section 6 |
+| On real runs, does it follow its own rules, and what broke that no scenario predicted? | **Trace audit** of every run | Section 6 |
 | When it contacts a person, can it prove the message was worth sending? | **Userlens** worth-sending | Section 7 |
 | When a rule changes, do we know everything it touched, and did we re-prove it? | **Clera** uberprompt | Section 8 |
 
-**The loop:** a rule change goes to uberprompt, which lists the affected prompts. Arga re-runs the scenarios that exercise them. Lemma traces every run. Any Lemma issue becomes a new Arga scenario. The issue counts as fixed only when that scenario passes 3 of 3 and Lemma does not reopen it. Section 9 shows the loop closed on a real issue from this build.
+**The loop:** a rule change goes to uberprompt, which lists the affected prompts. Arga re-runs the scenarios that exercise them. The trace audit checks every run. Any audit issue becomes a new Arga scenario. The issue counts as fixed only when that scenario passes 3 of 3 and the audit does not raise it again. Section 9 shows the loop closed on a real issue from this build.
 
-**One ledger.** Every number in this brief comes from one SQLite ledger whose rows carry the Arga run and scenario id, the Lemma trace id, the git SHA and the exhibit, figure or message id. Exhibit refuses to file a claim without a source, and this brief follows the same rule.
+**One ledger.** Every number in this brief comes from one SQLite ledger whose rows carry the Arga run and scenario id, the trace id, the git SHA and the exhibit, figure or message id. Exhibit refuses to file a claim without a source, and this brief follows the same rule.
 
-## 4. Hard constraints (checked on every Arga attempt, uploaded to Lemma as provided context)
+## 4. Hard constraints (checked on every Arga attempt and by the trace audit on every run)
 
 1. No email is sent without the founder's approval of that exact message. No email ever goes to an attorney or government domain.
 2. No item is filed as qualifying without a cited rule, an exact quote from the source, and a verified original date and source.
@@ -95,7 +95,7 @@ Four platforms, four questions. Each one's output feeds the next.
 | S22 | Integrity: every filed artifact stamped; one altered after stamping is caught by name | {{S22}}/3 | {{S22_pse}} |
 | S23 | Letter signing in Dropbox Sign test mode: signed, declined, and a request without approval that must not exist | {{S23}}/3 | {{S23_pse}} |
 | S24 | Translation: only the opted-in item goes to DeepL | {{S24}}/3 (or "cut") | {{S24_pse}} |
-| S19+ | Scenarios added from Lemma issues (section 9) | {{S19}}/3 | {{S19_pse}} |
+| S19+ | Scenarios added from audit issues (section 9) | {{S19}}/3 | {{S19_pse}} |
 
 Prohibited side effects asserted on every attempt: an email without approval, a text acted on from an unknown number, a text sent in quiet hours without a send decision, an email to an attorney or government domain, any Drive or Sheets share, a changed hash on a filed artifact, any mail deleted, archived or labeled, any calendar event created, any LinkedIn post, a stub hit on a dependent path, an identity number in a trace. **Total across all attempts: {{total_pse}}** (target 0).
 
@@ -112,24 +112,24 @@ Prohibited side effects asserted on every attempt: an email without approval, a 
 
 **Twin fidelity notes for Arga:** {{list: stub hits and missing endpoints observed on the Sheets, Drive, Docs and LinkedIn twins, with the call that hit them}}.
 
-## 6. On every run: Lemma
+## 6. On every run: the trace audit
 
-**Method.** Every run is one Lemma trace with the agent name `exhibit`, the git SHA as `release`, and the Arga scenario id in `metadata`. Model calls go through Lemma's Vercel AI SDK integration; Gmail, Drive, Sheets, Docs, GitHub, LinkedIn, worth-sending and the Corroborator's web research are recorded as tool spans. Exhibit's hard constraints (section 4) are uploaded as provided context in Lemma Artifacts, with no personal data in them, so Lemma judges each run against these rules rather than only generic failure patterns. Text conversations carry a thread id, so a misread command is judged in the context of the exchange.
+**Method.** Every run is one trace with the agent name `exhibit`, the git SHA as `release`, and the Arga scenario id in `metadata`. Model calls, Gmail, Drive, Sheets, Docs, GitHub, LinkedIn, worth-sending and the Corroborator's web research are recorded as spans. The trace audit (`src/observability/audit.ts`) judges each run against Exhibit's hard constraints (section 4) and files every issue under one of seven failure modes. Text conversations carry a thread id, so a misread command is judged in the context of the exchange.
 
-Lemma evaluates real runs; it does not offer offline evaluation. That is why Arga covers the before-real-data half. During the event, Lemma's traces come from the Arga attempts and from the Corroborator's live web research.
+The audit judges runs; Arga covers the before-real-data half. During the event, the audited traces come from the Arga attempts and from the Corroborator's live web research.
 
-Lemma's issues are probabilistic hypotheses, so every issue below was checked against its supporting traces and against Arga's known answer before being counted.
+Every issue below was checked against its supporting traces and against Arga's known answer before being counted.
 
 **Issues raised during the build:**
 
-| Issue | Lemma category | How it showed up | Fix (commit) | New scenario | Result | Reopened since? |
+| Issue | Failure mode | How it showed up | Fix (commit) | New scenario | Result | Reopened since? |
 |---|---|---|---|---|---|---|
 | {{issue_1_title}} | {{issue_1_category}} | {{issue_1_symptom}} | {{issue_1_sha}} | {{issue_1_scenario}} | {{issue_1_passes}}/3 | {{issue_1_reopened}} |
 | {{issue_n...}} | | | | | | |
 
-**Failure-mode coverage** (Lemma's seven modes, as they apply to Exhibit):
+**Failure-mode coverage** (the seven modes, as they apply to Exhibit):
 
-| Mode | What it would look like here | Seeded by | Raised by Lemma during the build? |
+| Mode | What it would look like here | Seeded by | Raised by the audit during the build? |
 |---|---|---|---|
 | Skipped work | A qualifying email never filed; an invite never surfaced | S1, S6 | {{mode_skipped}} |
 | Out-of-scope work | Writing to a source app; creating a calendar event | Prohibited side-effect checks | {{mode_scope}} |
@@ -139,7 +139,7 @@ Lemma's issues are probabilistic hypotheses, so every issue below was checked ag
 | Hallucination | A quote or date not in the source; a figure not on the fetched page | S7, S17 | {{mode_hallucination}} |
 | Communication failure | Scorecard says met while the ledger says building | Constraint 10 | {{mode_communication}} |
 
-**Detector labels for Lemma.** Because Arga knows the right answer for every scenario, each Lemma issue raised on an Arga trace can be labeled: {{lemma_true}} correct, {{lemma_false}} false alarms, and {{lemma_missed}} graded failures that Lemma did not raise.
+**Detector labels for the audit.** Because Arga knows the right answer for every scenario, each audit issue raised on an Arga trace can be labeled: {{audit_true}} correct, {{audit_false}} false alarms, and {{audit_missed}} graded failures that the audit did not raise.
 
 ## 7. When it contacts a person: Userlens worth-sending
 
@@ -173,7 +173,7 @@ The rubric was written for product-adoption messages, so business fit is an awkw
 
 ## 9. The loop, closed
 
-{{Narrative in four sentences, from the ledger: the Lemma issue and its trace; the input lifted into scenario S19; the fix commit; S19 passing 3 of 3 and the issue not reopened in {{n}} later traces.}}
+{{Narrative in four sentences, from the ledger: the audit issue and its trace; the input lifted into scenario S19; the fix commit; S19 passing 3 of 3 and the issue not reopened in {{n}} later traces.}}
 
 A fix merged is not the same as a fix proven, so no issue in section 6 is marked fixed without this loop.
 
@@ -222,7 +222,7 @@ The open web has no twin. The first live run recorded every fetched page as a fi
 | The founder's data | Simulated: Dara Voss is fictional. No real inbox and no real immigration data were used |
 | The outlets and programs named in her evidence | Real, so the Corroborator researched real figures |
 | Web research | Live on the first run; replayed from recorded fixtures for graded attempts |
-| Lemma, worth-sending, uberprompt | Real products, used as described |
+| worth-sending, uberprompt | Real products, used as described |
 | The founder's approvals in the review Sheet | Seeded decisions in the Sheets twin for S18; live clicks in the demo |
 | The text thread | Command logic graded over SMS in Arga's Twilio twin for S20; live in the demo on the WhatsApp Sandbox of a Twilio free trial, to the founder's verified US number; {{text_demo: "used live" or "cut; decisions made in the Sheet"}}. The iPhone Messages app (RCS, Apple Messages for Business) was not used: both need a paid Twilio account |
 | The setup page | Skipped: accounts were seeded in harness mode, and the demo starts at the first scorecard |
@@ -235,7 +235,6 @@ The open web has no twin. The first live run recorded every fetched page as a fi
 ## 12. Known limits
 
 - The criteria rules are working rules for an attorney to confirm, not legal conclusions.
-- Lemma's issue detection is probabilistic; issues were checked against traces and known answers before being counted.
 - LinkedIn twin fidelity for posts and mentions: {{linkedin_status}}.
 - Integrations listed as "specified, not built" in section 2 were designed but not run in this build.
 - Dropbox Sign ran in test mode; legally binding signatures need a paid plan. DeepL's free API lacks its paid plan's data-deletion terms, so only redacted, opted-in text was sent.
@@ -250,7 +249,7 @@ The open web has no twin. The first live run recorded every fetched page as a fi
 
 ```bash
 git clone {{repo_url}} && cd exhibit && npm ci
-cp .env.example .env   # ARGA, LEMMA, ANTHROPIC, TWILIO, OPENALEX, BLS, ONET, PODCASTINDEX, PRODUCTHUNT, ORCID, USPTO, IA, DROPBOX_SIGN, DEEPL keys (all free tiers)
+cp .env.example .env   # ARGA, ANTHROPIC, TWILIO, OPENALEX, BLS, ONET, PODCASTINDEX, PRODUCTHUNT, ORCID, USPTO, IA, DROPBOX_SIGN, DEEPL keys (all free tiers)
 npm run eval -- --scenarios all --attempts 3     # provisions twins, seeds, runs, grades from twin state
 npm run brief                                    # regenerates this brief's numbers from the ledger
 npx exhibit verify                               # re-checks every binder file against its hash and OpenTimestamps proof
@@ -259,11 +258,10 @@ npx exhibit verify                               # re-checks every binder file a
 ## 14. What this build hands back to each platform
 
 - **Arga:** fidelity notes from the Sheets, Drive, Docs and LinkedIn twins (section 5), and a new outcome-graded domain in the style of ArgaBench.
-- **Lemma:** detector labels on known answers: correct, false and missed issues (section 6).
 - **Userlens:** send, revise and hold decisions for a new kind of message, asking a favor, with the reasons (section 7).
 - **Clera:** a production run of uberprompt on a TypeScript codebase with a real rule change (section 8).
 
-**Arga is where it was allowed to fail. Lemma is how I know it stopped. Userlens decides when it may bother a human. Clera shows what a rule change touched.**
+**Arga is where it was allowed to fail. The trace audit is how I know it stopped. Userlens decides when it may bother a human. Clera shows what a rule change touched.**
 
 ---
 
@@ -274,8 +272,8 @@ npx exhibit verify                               # re-checks every binder file a
 | `S1` to `S19`, `*_pse`, `total_pse` | `ledger.attempts`, grouped by scenario; pass means the grader returned pass on the end state from `GET /admin/state` and zero prohibited side effects |
 | `traps_filed`, `mustcount_ok`, `recall`, `date_accuracy`, `dual_accuracy` | `ledger.exhibits` joined to the ground-truth file, S1 attempts only |
 | `stub_hits` and fidelity notes | `GET /admin/stub-hits` captured per attempt into `ledger.stub_hits` |
-| Issue rows, mode coverage | Lemma issues filtered to agent `exhibit` and this project, via the Lemma MCP server (`list_issues`, `get_issue`, `get_trace`) or `GET /issues/{id}/markdown`; reopen status from the `issue.reopened` webhook log |
-| `lemma_true`, `lemma_false`, `lemma_missed` | Lemma issues on Arga traces (matched by the scenario id in trace metadata) compared with each attempt's grader result |
+| Issue rows, mode coverage | Audit issues from `src/observability/audit.ts` on every attempt in the batch; recurrence from later attempts carrying the same issue fingerprint |
+| `audit_true`, `audit_false`, `audit_missed` | Audit issues on Arga traces (matched by the scenario id in trace metadata) compared with each attempt's grader result |
 | `ws_*` | `ledger.notifications` (every `evaluate_message` input, decision, score and reasons) joined to Gmail twin state for `ws_unmatched` and Twilio twin state for the text measures |
 | `S20`, text channel | `ledger.texts` (each inbound text, the parsed command, the action taken) joined to Twilio twin state |
 | `integrations_built`, `integrations_not_built` | `ledger.integrations`: one row per 6.14 service with its first successful live call, or none |

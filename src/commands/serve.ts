@@ -2,7 +2,6 @@ import { parseArgs } from 'node:util';
 import { runExhibit } from '../agent.js';
 import { buildLiveDeps } from '../config.js';
 import { startWebhookServer } from '../server/webhook.js';
-import { startLemmaWebhookServer } from '../server/lemmaWebhook.js';
 import type { TextMessage } from '../apps/types.js';
 
 // `exhibit serve` (PRD 6.13, 6.14): runs the Twilio inbound webhook and the scheduled watch loop
@@ -80,20 +79,6 @@ export async function cmdServe(args: string[]): Promise<void> {
   if (webhook) console.log(`Twilio webhook listening on :${port}`);
   else console.log('Twilio webhook not started (TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_PUBLIC_URL missing).');
 
-  // Lemma issue webhooks (6.10, 7.2): `issue.created`/`issue.resolved` post to the founder's own
-  // inbox. Shares the same HTTP port as the Twilio webhook is not possible with node:http's simple
-  // createServer-per-module shape used here, so this listens on port + 1 when enabled; only runs
-  // when LEMMA_WEBHOOK_SECRET is set (LEMMA_API_KEY/LEMMA_PROJECT_ID alone only enable tracing).
-  const lemmaWebhook = process.env.LEMMA_WEBHOOK_SECRET
-    ? startLemmaWebhookServer({
-        port: port + 1,
-        secret: process.env.LEMMA_WEBHOOK_SECRET,
-        founderEmail: deps.profile.emails[0]!,
-        sendEmail: (email) => deps.apps.gmail.send({ to: [email.to], subject: email.subject, body: email.body }),
-      })
-    : null;
-  if (lemmaWebhook) console.log(`Lemma issue webhook listening on :${port + 1}`);
-  else console.log('Lemma issue webhook not started (LEMMA_WEBHOOK_SECRET missing).');
 
   let timer: NodeJS.Timeout | null = null;
   function scheduleNext(): void {
@@ -110,7 +95,6 @@ export async function cmdServe(args: string[]): Promise<void> {
     if (timer) clearTimeout(timer);
     void (async () => {
       if (webhook) await webhook.close();
-      if (lemmaWebhook) await lemmaWebhook.close();
       await close();
       process.exit(0);
     })();

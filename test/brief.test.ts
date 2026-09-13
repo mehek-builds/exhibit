@@ -87,7 +87,7 @@ describe('generateBrief (template coverage)', () => {
       '## 3. How we know it works',
       '## 4. Hard constraints',
       '## 5. Before real data: Arga',
-      '## 6. On every run: Lemma',
+      '## 6. On every run: the trace audit',
       '## 7. When it contacts a person: Userlens worth-sending',
       '## 8. When a rule changes: Clera uberprompt',
       '## 9. The loop, closed',
@@ -113,7 +113,7 @@ describe('generateBrief (template coverage)', () => {
   });
 
   it('keeps the closing line', () => {
-    expect(brief).toContain('Arga is where it was allowed to fail. Lemma is how I know it stopped. Userlens decides when it may bother a human. Clera shows what a rule change touched.');
+    expect(brief).toContain('Arga is where it was allowed to fail. The trace audit is how I know it stopped. Userlens decides when it may bother a human. Clera shows what a rule change touched.');
   });
 
   it('reports known limits honestly for the heuristic model', () => {
@@ -207,7 +207,7 @@ describe('generateBrief (mutation table renders in section 5, after known answer
     const s5 = withMutation.indexOf('## 5. Before real data: Arga');
     const knownAnswers = withMutation.indexOf('Known answers:');
     const mutationRow = withMutation.indexOf('disable D-accelerator-acceptance');
-    const s6 = withMutation.indexOf('## 6. On every run: Lemma');
+    const s6 = withMutation.indexOf('## 6. On every run: the trace audit');
     expect(s5).toBeGreaterThan(-1);
     expect(knownAnswers).toBeGreaterThan(s5);
     expect(mutationRow).toBeGreaterThan(knownAnswers);

@@ -8,8 +8,8 @@ import type { GradeCheck, Scenario, ScenarioContext } from '../scenarios.js';
 import { DARA, E, seed } from '../corpus.js';
 
 // S27: detector-coverage scenarios (PRD 12.4). Today's graded runs raise only `hallucination` (S17's
-// seeded figure), so the brief cannot show the local audit (src/observability/audit.ts, the stand-in
-// for Lemma) actually catches the other six of Lemma's seven failure modes. Each scenario here injects
+// seeded figure), so the brief cannot show the trace audit (src/observability/audit.ts)
+// actually catches the other six of the seven failure modes. Each scenario here injects
 // exactly one realistic agent mistake at an app/model/tool boundary -- never by editing the agent,
 // corroborator, review queue, intake, letters or integrity files owned by another agent right now --
 // and asserts the resulting AuditIssue carries the expected `mode`.
