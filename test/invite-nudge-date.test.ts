@@ -192,4 +192,153 @@ describe('unanswered judge invite nudge uses the invite text date, not the email
       await env.close();
     }
   });
+
+  // Regression tests for review findings B1-B4 (nudge-review.md) and the legacy-backfill gap.
+
+  it('B1: a past day-first event date does not produce a false nudge', async () => {
+    // "on 1 September 2026" must parse as Sept 1, not Sept 20 (misreading the year's digits as
+    // the day). Sept 1 is 13 days before the harness clock, so it must never nudge.
+    const invite = mail({
+      id: 'm-nudge-b1',
+      from: 'HackX <judges@hackxb1.example>',
+      date: '2026-08-01T12:00:00Z',
+      subject: 'Invitation to judge HackX',
+      body: "Hi Dara,\n\nWe'd love you to judge HackX on 1 September 2026.\n\nHackX",
+    });
+    const env = createHarnessEnv({
+      seed: seed({ gmail: [invite] }),
+      now: atLocalMorning('2026-09-14T16:00:00Z'),
+      gate: 'library',
+      twilio: withSms(),
+      extensions: () => [createNotifier()],
+    });
+    try {
+      await env.run();
+      expect(nudgeNotifications(env).length).toBe(0);
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('B2: a submission deadline is not read as a reply deadline; the real event date is used instead', async () => {
+    const invite = mail({
+      id: 'm-nudge-b2',
+      from: 'HackX <judges@hackxb2.example>',
+      date: '2026-09-01T12:00:00Z',
+      subject: 'Invitation to judge HackX',
+      body: "Hi Dara,\n\nWe'd love you to judge HackX on October 20, 2026. Project submission deadline: September 16.\n\nHackX",
+    });
+    const env = createHarnessEnv({
+      seed: seed({ gmail: [invite] }),
+      now: atLocalMorning('2026-09-14T16:00:00Z'), // 2 days before the fake "deadline"; 36 before the real event
+      gate: 'library',
+      twilio: withSms(),
+      extensions: () => [createNotifier()],
+    });
+    try {
+      await env.run();
+      // No false "reply deadline" nudge from the submission deadline.
+      expect(nudgeNotifications(env).length).toBe(0);
+      const c = env.deps.ledger.candidates().find((x) => x.title.includes('HackX'));
+      const jc = JSON.parse(env.deps.ledger.get(c!.key) ?? '{}');
+      expect(jc.actionDate).toEqual({ date: '2026-10-20T00:00:00.000Z', kind: 'event' });
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('B3: an invalid deadline falls back to a valid, near event date and nudges on it', async () => {
+    const invite = mail({
+      id: 'm-nudge-b3',
+      from: 'HackX <judges@hackxb3.example>',
+      date: '2026-09-01T12:00:00Z',
+      subject: 'Invitation to judge HackX',
+      body: 'Hi Dara,\n\nPlease reply by September 31 to confirm. The event is on October 3, 2026.\n\nHackX',
+    });
+    const env = createHarnessEnv({
+      seed: seed({ gmail: [invite] }),
+      now: atLocalMorning('2026-09-29T16:00:00Z'), // 4 days before the valid event date
+      gate: 'library',
+      twilio: withSms(),
+      extensions: () => [createNotifier()],
+    });
+    try {
+      await env.run();
+      const nudges = nudgeNotifications(env);
+      expect(nudges.length).toBe(1);
+      const textOut = env.deps.ledger.events({ kind: 'text_out' }).find((e) => e.detail.kind === 'nudge');
+      expect(String(textOut?.detail.body)).toContain('event date');
+      expect(String(textOut?.detail.body)).toContain('3 day');
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('B4: a quoted old deadline does not hide the real event date', async () => {
+    const invite = mail({
+      id: 'm-nudge-b4',
+      from: 'NewHacks <judges@newhacksb4.example>',
+      date: '2026-09-10T12:00:00Z',
+      subject: 'Invitation to judge NewHacks',
+      body:
+        "Just following up!\n\n> On Aug 1, 2026 PastHacks wrote:\n> Please reply by August 5 to judge PastHacks.\n\n" +
+        "We'd love you to judge NewHacks on September 18, 2026.",
+    });
+    const env = createHarnessEnv({
+      seed: seed({ gmail: [invite] }),
+      now: atLocalMorning('2026-09-14T16:00:00Z'), // 4 days before the real Sept 18 event
+      gate: 'library',
+      twilio: withSms(),
+      extensions: () => [createNotifier()],
+    });
+    try {
+      await env.run();
+      const nudges = nudgeNotifications(env);
+      expect(nudges.length).toBe(1);
+      const textOut = env.deps.ledger.events({ kind: 'text_out' }).find((e) => e.detail.kind === 'nudge');
+      expect(String(textOut?.detail.body)).toContain('event date');
+      expect(String(textOut?.detail.body)).toContain('3 day');
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('a legacy JudgingCase with no actionDate key is backfilled from the invite text and nudges correctly', async () => {
+    const invite = mail({
+      id: 'm-nudge-legacy',
+      from: 'HackX <judges@hackxlegacy.example>',
+      date: '2026-08-01T12:00:00Z',
+      subject: 'Invitation to judge HackX',
+      body: "Hi Dara,\n\nWe'd love you to judge HackX on September 30, 2026. Please reply by September 17.\n\nHackX",
+    });
+    const env = createHarnessEnv({
+      seed: seed({ gmail: [invite] }),
+      now: atLocalMorning('2026-08-02T16:00:00Z'),
+      gate: 'library',
+      twilio: withSms(),
+      extensions: () => [createNotifier()],
+    });
+    try {
+      await env.run();
+      const key = 'judging:hackxlegacy.example';
+      const jc = JSON.parse(env.deps.ledger.get(key) ?? '{}');
+      expect('actionDate' in jc).toBe(true);
+      // Simulate a case ingested before actionDate parsing existed: strip the field entirely.
+      delete jc.actionDate;
+      env.deps.ledger.set(key, JSON.stringify(jc));
+
+      env.clock.set(new Date('2026-09-14T16:00:00Z')); // just under 3 days before the Sept 17 deadline
+      await env.run();
+
+      const after = JSON.parse(env.deps.ledger.get(key) ?? '{}');
+      expect(after.actionDate).toEqual({ date: '2026-09-17T00:00:00.000Z', kind: 'deadline' });
+      const nudges = nudgeNotifications(env);
+      expect(nudges.length).toBe(1);
+      const textOut = env.deps.ledger.events({ kind: 'text_out' }).find((e) => e.detail.kind === 'nudge');
+      expect(String(textOut?.detail.body)).toContain('reply deadline');
+      expect(String(textOut?.detail.body)).toContain('2 day');
+    } finally {
+      await env.close();
+    }
+  });
 });

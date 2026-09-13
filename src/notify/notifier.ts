@@ -1,12 +1,13 @@
 import type { AgentExtension, ExtensionContext } from '../agent.js';
 import type { CandidateRow, Ledger } from '../ledger.js';
 import type { Scorecard } from '../binder/scorecard.js';
-import type { TwilioApi } from '../apps/types.js';
+import type { Apps, TwilioApi } from '../apps/types.js';
 import type { FounderProfile } from '../types.js';
 import { listFiguresText } from '../text/channel.js';
 import { DEFAULT_QUIET_HOURS, inQuietHours } from './quietHours.js';
 import { buildSelfTextPacket } from './packets.js';
 import type { NotifyKind, SelfTextFacts } from './packets.js';
+import { parseInviteActionDate } from '../pipeline/inviteDate.js';
 
 // First-run flow and proactive notifications (PRD 4.1, 6.8, 6.13). Every proactive text is gated by
 // worth-sending and by quiet hours; a `send` during quiet hours is deferred, never dropped, to the
@@ -72,17 +73,67 @@ interface NudgeDate {
   kind: 'deadline' | 'event';
 }
 
+interface JudgingCaseForBackfill {
+  actionDate?: NudgeDate | null;
+  invite?: { date: string | null; subject: string } | null;
+  primaryItemId?: { app: string; id: string } | null;
+  [key: string]: unknown;
+}
+
+/** Legacy judging cases (created before invite-date parsing existed) never got an `actionDate`
+ * key at all. Rather than leave them stuck on the `event_date` fallback forever, compute it once
+ * from the invite's own text -- recovered from Gmail by `primaryItemId` -- and persist it back to
+ * `judging:<domain>` so it isn't recomputed on every run. When the text can't be recovered (item
+ * gone, not a Gmail item, or no invite recorded at all), the field is still stamped `null` so this
+ * case is not retried forever; the `event_date` fallback keeps applying. */
+async function backfillActionDate(ledger: Ledger, apps: Apps, c: CandidateRow): Promise<NudgeDate | null> {
+  const raw = ledger.get(c.key);
+  if (!raw) return null;
+  let jc: JudgingCaseForBackfill;
+  try {
+    jc = JSON.parse(raw) as JudgingCaseForBackfill;
+  } catch {
+    return null;
+  }
+  if ('actionDate' in jc) return jc.actionDate ?? null;
+
+  let computed: NudgeDate | null = null;
+  const primaryItemId = jc.primaryItemId;
+  const invite = jc.invite;
+  if (invite && primaryItemId && primaryItemId.app === 'gmail') {
+    try {
+      const msgs = await apps.gmail.listMessages();
+      const msg = msgs.find((m) => m.id === primaryItemId.id);
+      if (msg) {
+        const text = `${msg.subject}\n${msg.body}`;
+        computed = parseInviteActionDate(text, invite.date);
+      }
+    } catch {
+      computed = null;
+    }
+  }
+
+  jc.actionDate = computed;
+  ledger.set(c.key, JSON.stringify(jc));
+  return computed;
+}
+
 /** The date that should drive the time-sensitive nudge for an unanswered invite: its own reply
  * deadline or event date, parsed from the invite text at verify time (verifier.ts/inviteDate.ts)
  * and persisted alongside the judging case under the candidate's own ledger key -- no schema
  * churn on CandidateRow. Falls back to `event_date` (today's behaviour) when the invite carried no
- * parseable date of its own. */
-function nudgeDateOf(ledger: Ledger, c: CandidateRow): NudgeDate | null {
+ * parseable date of its own, or backfills a legacy case that never got the field at all. */
+async function nudgeDateOf(ledger: Ledger, apps: Apps, c: CandidateRow): Promise<NudgeDate | null> {
   const raw = ledger.get(c.key);
   if (raw) {
     try {
       const jc = JSON.parse(raw) as { actionDate?: NudgeDate | null };
-      if (jc.actionDate) return jc.actionDate;
+      if ('actionDate' in jc) {
+        if (jc.actionDate) return jc.actionDate;
+      } else {
+        const backfilled = await backfillActionDate(ledger, apps, c);
+        if (backfilled) return backfilled;
+      }
     } catch {
       // fall through to event_date
     }
@@ -94,13 +145,13 @@ function dateLabel(kind: NudgeDate['kind']): string {
   return kind === 'deadline' ? 'reply deadline' : 'event date';
 }
 
-function timeSensitiveLine(ledger: Ledger, candidates: CandidateRow[], now: Date): string | null {
-  const soon = candidates
-    .filter((c) => c.mapping.rule_id === 'C4-invite-unanswered')
-    .map((c) => {
-      const nd = nudgeDateOf(ledger, c);
-      return { c, nd, days: nd ? daysUntil(nd.date, now) : null };
-    })
+async function timeSensitiveLine(ledger: Ledger, apps: Apps, candidates: CandidateRow[], now: Date): Promise<string | null> {
+  const rows: { c: CandidateRow; nd: NudgeDate | null; days: number | null }[] = [];
+  for (const c of candidates.filter((c) => c.mapping.rule_id === 'C4-invite-unanswered')) {
+    const nd = await nudgeDateOf(ledger, apps, c);
+    rows.push({ c, nd, days: nd ? daysUntil(nd.date, now) : null });
+  }
+  const soon = rows
     .filter((x): x is { c: CandidateRow; nd: NudgeDate; days: number } => x.days !== null && x.days >= 0 && x.days <= 7)
     .sort((a, b) => a.days - b.days)[0];
   if (!soon) return null;
@@ -125,14 +176,14 @@ function firstScorecardFiguresLine(ledger: Ledger): string {
   return `${pending.length} figure${pending.length === 1 ? '' : 's'} are waiting for your review: ${link}`;
 }
 
-function buildFirstScorecardText(sc: Scorecard, ledger: Ledger, now: Date): string {
+async function buildFirstScorecardText(sc: Scorecard, ledger: Ledger, apps: Apps, now: Date): Promise<string> {
   const total = ledger.exhibits().length;
   const parts = [
     `Done. I found ${total} piece${total === 1 ? '' : 's'} of evidence you already have.`,
     `O-1A: ${sc.o1Met} of 8 criteria. EB-1A: ${sc.eb1Met} of 10.`,
     `Closest gap: ${sc.nextAction}.`,
   ];
-  const ts = timeSensitiveLine(ledger, ledger.candidates(), now);
+  const ts = await timeSensitiveLine(ledger, apps, ledger.candidates(), now);
   if (ts) parts.push(ts);
   parts.push(firstScorecardFiguresLine(ledger));
   return parts.join(' ');
@@ -259,7 +310,7 @@ export function createNotifier(opts: NotifierOptions = {}): AgentExtension {
 
     async afterScorecard(ctx: ExtensionContext): Promise<void> {
       const { deps, now, summary } = ctx;
-      const { ledger, profile } = deps;
+      const { ledger, profile, apps } = deps;
 
       // Step 2: backfill completion, once.
       if (!ledger.get('backfill_done_at')) {
@@ -270,7 +321,7 @@ export function createNotifier(opts: NotifierOptions = {}): AgentExtension {
       // Step 3: the first-scorecard text, once, with real numbers from this run's scorecard.
       if (!ledger.get('first_scorecard_sent') && summary.scorecard) {
         const sc = summary.scorecard;
-        const body = buildFirstScorecardText(sc, ledger, now);
+        const body = await buildFirstScorecardText(sc, ledger, apps, now);
         const r = await deliver(ctx, 'first_scorecard', body, { pendingFigures: sc.figures.pending }, null);
         if (!r.deferred) ledger.set('first_scorecard_sent', '1');
       }
@@ -279,7 +330,7 @@ export function createNotifier(opts: NotifierOptions = {}): AgentExtension {
       // event date) is within 7 days -- and still in the future.
       for (const c of ledger.candidates()) {
         if (c.mapping.rule_id !== 'C4-invite-unanswered') continue;
-        const nd = nudgeDateOf(ledger, c);
+        const nd = await nudgeDateOf(ledger, apps, c);
         const days = nd ? daysUntil(nd.date, now) : null;
         if (days === null || days < 0 || days > 7) continue;
         const flag = `nudge_sent:${c.key}`;
