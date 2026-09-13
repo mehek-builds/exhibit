@@ -599,8 +599,7 @@ function knownLimits(m: MatrixResult): string {
   ].join('\n');
 }
 
-/** Section 12(c): docs/SECURITY-REVIEW.md's own findings, restated plainly. Every item in that
- * review carries a "Patch:" (a fix to apply), never a "fixed" marker, so all four are still open. */
+/** Section 12(c): docs/SECURITY-REVIEW.md's own per-finding status, restated plainly. */
 function securityReviewLimits(): string[] {
   const path = join(process.cwd(), 'docs', 'SECURITY-REVIEW.md');
   if (!existsSync(path)) return ['- Security review: docs/SECURITY-REVIEW.md does not exist in this repo — not run.'];
@@ -611,9 +610,16 @@ function securityReviewLimits(): string[] {
     { id: 'M2', label: 'the Twilio webhook has no request body size cap, ahead of its signature check' },
     { id: 'L1', label: 'inbound/outbound SMS body is stored unredacted in the ledger' },
   ];
-  const fixed = /\bFIXED\b/.test(text) || /marked fixed/i.test(text);
-  const status = findings.map((f) => `${f.id} (${f.label})`).join('; ');
-  return [`- Security review residual items (docs/SECURITY-REVIEW.md): ${fixed ? `fixed: ${status}` : `still open, no patch applied yet: ${status}`}.`];
+  const open = findings.filter((finding) => {
+    const escapedId = finding.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const status = new RegExp(`\\*\\*${escapedId}\\b[\\s\\S]*?\\*Status:\\s*([^*]+)\\*`, 'i').exec(text)?.[1]?.trim();
+    return !status || !/^fixed\b/i.test(status);
+  });
+  if (open.length === 0) {
+    return ['- Security review (docs/SECURITY-REVIEW.md): H1, M1, M2 and L1 are marked fixed; no open findings remain in that review.'];
+  }
+  const status = open.map((finding) => `${finding.id} (${finding.label})`).join('; ');
+  return [`- Security review open findings (docs/SECURITY-REVIEW.md): ${status}.`];
 }
 
 // ---------------- section 13: reproduce ----------------
