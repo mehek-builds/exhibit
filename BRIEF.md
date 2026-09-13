@@ -1,7 +1,6 @@
-Wrote BRIEF.md
-em and reliability brief
+# Exhibit: system and reliability brief
 
-Batch: batch_1789322254328 | Release: dev | Brief generated: 2026-09-13T17:59:50.264Z | Eval window: 2026-09-13T17:57:09.533Z to 2026-09-13T17:57:34.328Z
+Batch: batch_1789331474666 | Release: cfdb66e | Brief generated: 2026-09-13T20:31:38.819Z | Eval window: 2026-09-13T20:31:00.998Z to 2026-09-13T20:31:14.666Z
 
 ## 1. What it does
 
@@ -26,9 +25,9 @@ Built on the day vs. specified but not built, split by what was actually run (re
 
 | Category | Integrations |
 |---|---|
-| Built and fixture-tested (this eval batch) | none |
+| Built and fixture-tested (this eval batch) | Hugging Face Hub, Product Hunt, Podcast Index, USPTO PatentSearch, OpenReview, ORCID, SEC EDGAR (Form D) |
 | Exercised live (smoke — docs/integrations/LIVE-SMOKE.md, 2026-09-13) | GDELT (smoke: one request, keyless; ran only on an empty result (0 hits); not a positive live parse), Hacker News (smoke: one request, keyless; exercised live), Crossref (smoke: one request, keyless; exercised live), BLS (90th-percentile wage) (smoke: one request, keyless; exercised live, unregistered-key path), ecosyste.ms (smoke: one request, keyless; exercised live), Platform stats (GitHub/Google plumbing) (smoke: one request, keyless; GitHub REST leg only; the Hugging Face leg was not exercised), OpenTimestamps (smoke: one request, keyless; single-calendar smoke only (one of three DEFAULT_CALENDARS); upgrade/verifyProof not exercised), Internet Archive Save Page Now (smoke: one request, keyless; availability API only; Save Page Now was not called) |
-| Not run live | Hugging Face Hub, Product Hunt, Podcast Index, USPTO PatentSearch, OpenReview, ORCID, SEC EDGAR (Form D), OpenAlex, Semantic Scholar (inconclusive: 200 response but the parser found no candidates; not confirmed live, needs a clean re-run), O*NET, Dropbox Sign, DeepL API Free, Twilio (text channel), Text command channel, Structured research dispatch |
+| Not run live | OpenAlex, Semantic Scholar (inconclusive: 200 response but the parser found no candidates; not confirmed live, needs a clean re-run), O*NET, Dropbox Sign, DeepL API Free, Twilio (text channel), Text command channel, Structured research dispatch |
 | Sandbox only | USCIS Case Status API (Torch) |
 
 **Model API:** none (offline keyword stand-in) (not counted as an app).
@@ -220,7 +219,7 @@ Tamper-evidence. Every filed artifact's SHA-256 is stamped with OpenTimestamps, 
 |---|---|
 | Artifacts filed and stamped | 150 of 447 |
 | Timestamp proofs confirmed in Bitcoin (the rest pending, upgraded nightly) | 0 |
-| `exhibit verify`: untouched files passing / altered file caught | 117 / NaN |
+| `exhibit verify`: untouched files passing / altered file caught | 117 / 3 |
 | Approved public sources archived | 24 of 24 |
 
 Discovery. Candidates found by source, and what became of them:
@@ -249,7 +248,7 @@ Letters. Dropbox Sign requests (test mode): 21 created, 3 signed, 12 declined, a
 | Gmail, Calendar, Drive, Sheets, Docs, GitHub, LinkedIn | Exhibit's in-memory twins, not Arga's hosted twins |
 | The founder's data | Simulated: Dara Voss is fictional. No real inbox and no real immigration data were used |
 | The outlets and programs named in her evidence | Fictional in this build: Dara Voss's outlets and programs are .example domains, so no figure attached to them is a real statistic |
-| Web research | Live calls were recorded in this batch |
+| Web research | Fixtures only in this batch; no live web research event was recorded |
 | worth-sending, uberprompt | worth-sending ran as a real local MCP server; uberprompt ran as this repository's own local stand-in in this batch (see section 8) |
 | The founder's approvals in the review Sheet | Seeded decisions in the twin for S18 |
 | The text thread | Command logic graded over the in-memory Twilio twin for S20; no live transport event was recorded in this batch |
@@ -275,16 +274,20 @@ Letters. Dropbox Sign requests (test mode): 21 created, 3 signed, 12 declined, a
 - It captures evidence; it cannot create it.
 - The model in this batch ("none (offline keyword stand-in)") is a deterministic heuristic stand-in, not Claude.
 - Claude path: docs/LLM-PATH.md does not exist in this repo, so no documented Claude-path status (heuristic stand-in vs. request-shape testing vs. live) can be reported here — not run / not documented.
-- Security review residual items (docs/SECURITY-REVIEW.md): still open, no patch applied yet: H1 (`reports/` is not gitignored and can publish eval-run JSON to a public repo on the first commit); M1 (raw integration error bodies (USCIS, Dropbox Sign, DeepL, Twilio) can reach the trace log unredacted); M2 (the Twilio webhook has no request body size cap, ahead of its signature check); L1 (inbound/outbound SMS body is stored unredacted in the ledger).
+- Security review (docs/SECURITY-REVIEW.md): H1, M1, M2 and L1 are marked fixed; no open findings remain in that review.
 
 ## 13. Reproduce
 
 ```bash
 git clone https://github.com/mehek-builds/exhibit && cd exhibit && npm ci
-npx tsx src/cli.ts eval --attempts 3     # runs the scenario matrix and writes reports/eval-latest.json
-npx tsx src/cli.ts brief                 # regenerates this brief from reports/eval-latest.json
-npx tsx src/cli.ts verify                # re-checks every binder file against its hash and OpenTimestamps proof
+npm run demo                                    # full synthetic year, exported to out/demo
+npm run eval -- --attempts 3                    # in-memory twins, seeded and graded from twin state
+npm run mutate                                  # proves safety scenarios go red when their rules are disabled
+npm run brief                                   # regenerates this brief from the latest reports
+npm run verify -- --demo out/demo               # expected exit 1: names the demo artifact altered on purpose
 ```
+
+For a live binder, copy `.env.example` to `.env`, provide the Google, GitHub, owner-email and profile values plus any optional integration keys, run `npm run exhibit -- run --live`, then run `npm run verify` without `--demo`.
 
 ## 14. What this build hands back to each platform
 
