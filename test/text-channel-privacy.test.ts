@@ -249,6 +249,99 @@ describe('the injection guard applies identically to both parsers', () => {
     vi.doUnmock('@ai-sdk/anthropic');
     vi.resetModules();
   });
+
+  it('an invented stop or approve with no intent word in the text still gets a clarifying question', async () => {
+    vi.resetModules();
+    vi.doMock('@ai-sdk/anthropic', () => ({
+      createAnthropic: () => () => mockModel(() => textResult({ commands: [{ kind: 'stop' }] })),
+    }));
+    const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+    const parser = new MockedParser('unused-key', graph);
+    const out = await parser.parse("I'm back", { now: NOW, pendingFigureNumbers: [] });
+    expect(out).toHaveLength(1);
+    expect(out[0]!.kind).toBe('unclear');
+
+    vi.doUnmock('@ai-sdk/anthropic');
+    vi.resetModules();
+  });
+});
+
+describe('read-only/harmless kinds need no keyword grounding (status, next, resume/start, yes)', () => {
+  const cases: [text: string, kind: string][] = [
+    ['where am I?', 'status'],
+    ['how am I doing?', 'status'],
+    ["I'm back", 'resume'],
+    ['status', 'status'],
+    ['next', 'next'],
+  ];
+
+  for (const [text, kind] of cases) {
+    it(`"${text}" parses to ${kind} without a false clarification`, async () => {
+      vi.resetModules();
+      vi.doMock('@ai-sdk/anthropic', () => ({
+        createAnthropic: () => () => mockModel(() => textResult({ commands: [{ kind }] })),
+      }));
+      const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+      const parser = new MockedParser('unused-key', graph);
+      const out = await parser.parse(text, { now: NOW, pendingFigureNumbers: [] });
+      expect(out).toEqual([{ kind }]);
+      vi.doUnmock('@ai-sdk/anthropic');
+      vi.resetModules();
+    });
+  }
+
+  it('"yes" parses without a false clarification (confirmation applied in channel.ts, not here)', async () => {
+    vi.resetModules();
+    vi.doMock('@ai-sdk/anthropic', () => ({
+      createAnthropic: () => () => mockModel(() => textResult({ commands: [{ kind: 'yes' }] })),
+    }));
+    const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+    const parser = new MockedParser('unused-key', graph);
+    const out = await parser.parse('yes', { now: NOW, pendingFigureNumbers: [] });
+    expect(out).toEqual([{ kind: 'yes' }]);
+    vi.doUnmock('@ai-sdk/anthropic');
+    vi.resetModules();
+  });
+
+  it('"approve all" is grounded (intent word present) and parses without a false clarification', async () => {
+    vi.resetModules();
+    vi.doMock('@ai-sdk/anthropic', () => ({
+      createAnthropic: () => () => mockModel(() => textResult({ commands: [{ kind: 'approve', figures: 'all' }] })),
+    }));
+    const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+    const parser = new MockedParser('unused-key', graph);
+    const out = await parser.parse('approve all', { now: NOW, pendingFigureNumbers: [1, 2] });
+    expect(out).toEqual([{ kind: 'approve', figures: 'all' }]);
+    vi.doUnmock('@ai-sdk/anthropic');
+    vi.resetModules();
+  });
+
+  it('"pause until the 20th" is grounded when the model derives the same date the text implies', async () => {
+    vi.resetModules();
+    vi.doMock('@ai-sdk/anthropic', () => ({
+      createAnthropic: () => () => mockModel(() => textResult({ commands: [{ kind: 'pause', until: '2026-09-20' }] })),
+    }));
+    const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+    const parser = new MockedParser('unused-key', graph);
+    const out = await parser.parse('pause until the 20th', { now: NOW, pendingFigureNumbers: [] });
+    expect(out).toEqual([{ kind: 'pause', until: '2026-09-20' }]);
+    vi.doUnmock('@ai-sdk/anthropic');
+    vi.resetModules();
+  });
+
+  it('"add evidence https://example.com/x" is grounded when the URL appears in the text', async () => {
+    vi.resetModules();
+    vi.doMock('@ai-sdk/anthropic', () => ({
+      createAnthropic: () => () =>
+        mockModel(() => textResult({ commands: [{ kind: 'add_evidence', description: 'https://example.com/x' }] })),
+    }));
+    const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+    const parser = new MockedParser('unused-key', graph);
+    const out = await parser.parse('add evidence https://example.com/x', { now: NOW, pendingFigureNumbers: [] });
+    expect(out).toEqual([{ kind: 'add_evidence', description: 'https://example.com/x' }]);
+    vi.doUnmock('@ai-sdk/anthropic');
+    vi.resetModules();
+  });
 });
 
 describe('outbound texts never carry identity numbers or document contents', () => {

@@ -133,13 +133,14 @@ function respondSafely(res: ServerResponse, status: number, contentType: string,
 
 export function startLemmaWebhookServer(opts: LemmaWebhookOptions): LemmaWebhookServer {
   const seenEvents = new Map<string, number>();
+  const inFlightEvents = new Set<string>();
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     // See webhook.ts for why these no-op listeners are load-bearing: an EventEmitter 'error' with
     // no listener throws synchronously and crashes the process, independent of the promise chain.
     req.on('error', () => {});
     req.on('aborted', () => {});
     res.on('error', () => {});
-    handle(req, res, opts, seenEvents).catch(() => {
+    handle(req, res, opts, seenEvents, inFlightEvents).catch(() => {
       respondSafely(res, 500, 'text/plain', 'internal error');
     });
   });
@@ -162,7 +163,13 @@ function emailFor(event: LemmaIssueEvent): { subject: string; body: string } {
   return { subject, body };
 }
 
-async function handle(req: IncomingMessage, res: ServerResponse, opts: LemmaWebhookOptions, seenEvents: Map<string, number>): Promise<void> {
+async function handle(
+  req: IncomingMessage,
+  res: ServerResponse,
+  opts: LemmaWebhookOptions,
+  seenEvents: Map<string, number>,
+  inFlightEvents: Set<string>,
+): Promise<void> {
   if (req.method !== 'POST') {
     respondSafely(res, 404, 'text/plain', 'not found');
     return;
@@ -192,20 +199,27 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: LemmaWebh
   }
   const now = Date.now();
   const key = replayKey(event, body);
-  if (seenEvents.has(key)) {
-    // Replayed, validly-signed request: no-op 200 so Lemma doesn't retry, and never a second email.
+  const alreadyDone = seenEvents.has(key);
+  const alreadyInFlight = inFlightEvents.has(key);
+  if (alreadyDone || alreadyInFlight) {
+    // Already emailed (or a concurrent delivery of the same event is still in flight): no-op 200,
+    // never a second email.
     respondSafely(res, 200, 'application/json', '{"ok":true}');
     return;
   }
-  seenEvents.set(key, now);
-  pruneDedupe(seenEvents, now);
+  inFlightEvents.add(key);
   const { subject, body: emailBody } = emailFor(event);
   try {
     // The recipient always comes from opts.founderEmail, set at server construction time --
     // never from the payload -- so a malicious or malformed event can never redirect the send.
     await opts.sendEmail({ to: opts.founderEmail, subject, body: emailBody });
-  } catch {
-    // A Lemma delivery failure never replaces or hides Exhibit's own result (6.10); just don't 500.
+  } catch (err) {
+    inFlightEvents.delete(key);
+    // Do not ack: Lemma must see a failure so it retries and the founder's notification isn't lost.
+    throw err;
   }
+  inFlightEvents.delete(key);
+  seenEvents.set(key, now);
+  pruneDedupe(seenEvents, now);
   respondSafely(res, 200, 'application/json', '{"ok":true}');
 }

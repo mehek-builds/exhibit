@@ -302,8 +302,8 @@ async function pipeline(deps: AgentDeps, trace: TraceContext, runId: string, now
     // Freshness at export (6.11): drop already-approved figures older than 12 months back to
     // `pending` before any decisions or writes happen this run, so a stale number can never reach
     // context notes without going through founder approval again.
-    const stale = requeueStaleFigures(ledger, now, { runId, traceId: trace.traceId });
-    s.review = await applyDecisions(reviewDeps, new Set(stale.staleFigIds));
+    requeueStaleFigures(ledger, now, { runId, traceId: trace.traceId });
+    s.review = await applyDecisions(reviewDeps);
     for (const app of s.review.degraded) if (!s.degraded.includes(app)) s.degraded.push(app);
     s.corroboration = await corroborate(ledger.exhibits(), { drive: apps.drive, ledger, trace, graph, researcher: deps.researcher, fetcher: deps.fetcher, policy: deps.policy, binder, runId, now, structured: deps.structured, profile });
     const { digestSent, degraded: queueDegraded } = await queueFigures(s.corroboration.queued, reviewDeps);
