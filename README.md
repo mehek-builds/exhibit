@@ -48,13 +48,16 @@ npx tsx src/cli.ts eval --attempts 3       # runs the Arga scenario matrix, 3 at
 npx tsx src/cli.ts mutate                  # disables key rules one at a time; each must turn a scenario red
 npx tsx src/cli.ts prove-rules             # re-runs the scenarios behind any changed rule fragment
 npx tsx src/cli.ts brief --out BRIEF.md    # regenerates BRIEF.md's numbers from the latest reports
-npx tsx src/cli.ts verify --demo out/demo  # re-checks the exported demo against its synthetic timestamp chain
+npx tsx src/cli.ts verify --demo out/demo  # checks internal consistency against the exported synthetic fixture chain
 ```
 
 The demo deliberately changes one filed artifact after stamping it. The final `verify --demo`
 command therefore reports 42 confirmed files, names the altered file, and exits with status 1. That
 failure is the expected proof that tampering is detected. Live verification uses `verify` without
 `--demo` and requires the live Google, GitHub, owner-email, profile, and ledger configuration below.
+Because the demo's synthetic chain manifest lives in the same export, this command is an internal
+consistency check, not an independently anchored timestamp. The live verifier checks Bitcoin
+attestations against block headers fetched independently from Blockstream.
 
 `npx tsx src/cli.ts help` lists the rest (`affected`, `check-rules`, `lift`, `run --live`,
 `watch --live`, `serve`, `loop`). `npm run check` runs typecheck, tests and the rule check;

@@ -369,6 +369,13 @@ export async function runDemo(outDir: string): Promise<void> {
     if (integrityFixtures) {
       const { decodeOts } = await import('./integrity/ots.js');
       const roots: Record<string, string> = {};
+      const stampableRoles = new Set(['original', 'render', 'member', 'signed_letter', 'translation']);
+      const artifacts = state.drive.files
+        .filter((file) => stampableRoles.has(file.appProperties?.role ?? ''))
+        .map((file) => env.twins.drivePath(file.id))
+        .filter((path): path is string => Boolean(path?.startsWith('Exhibit binder/')))
+        .map((path) => path.slice('Exhibit binder/'.length))
+        .sort();
       for (const file of state.drive.files) {
         if (!file.name.endsWith('.ots')) continue;
         const content = env.twins.driveContent(file.id);
@@ -382,7 +389,7 @@ export async function runDemo(outDir: string): Promise<void> {
       }
       writeFileSync(
         join(outDir, 'integrity-chain.json'),
-        `${JSON.stringify({ kind: 'synthetic-fixture', roots }, null, 2)}\n`,
+        `${JSON.stringify({ kind: 'synthetic-fixture', roots, artifacts }, null, 2)}\n`,
       );
     }
     writeFileSync(join(outDir, 'scorecard.txt'), run2.scorecardText ?? run1.scorecardText ?? '');

@@ -9,6 +9,7 @@ import { currentRelease } from './release.js';
 import { generateBrief } from './brief.js';
 import type { MutationResult } from './brief.js';
 import { runDemo } from './demo.js';
+import { intervalMilliseconds, positiveSafeInteger } from './cli-validation.js';
 
 // Exhibit CLI (PRD section 13 brief skeleton, section 14 demo). Entry point
 // for `npx tsx src/cli.ts <command>`; bin/exhibit.mjs spawns tsx on this file.
@@ -19,18 +20,6 @@ const LIFTED_DIR = join(process.cwd(), 'harness', 'lifted');
 function fail(msg: string): never {
   console.error(msg);
   process.exit(1);
-}
-
-function positiveInteger(value: string, flag: string): number {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1) fail(`${flag} must be a positive integer; received '${value}'.`);
-  return parsed;
-}
-
-function positiveNumber(value: string, flag: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) fail(`${flag} must be a positive number; received '${value}'.`);
-  return parsed;
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -63,7 +52,7 @@ async function cmdEval(args: string[]): Promise<void> {
   });
   const { listScenarios, runMatrix } = await import('../harness/runner.js');
   const scenarios = values.scenario ? values.scenario.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
-  const attempts = positiveInteger(values.attempts!, '--attempts');
+  const attempts = positiveSafeInteger(values.attempts!, '--attempts');
   const gate = values.gate;
   if (gate !== 'mcp' && gate !== 'library') fail(`Unknown --gate '${gate}'; expected 'mcp' or 'library'.`);
   if (scenarios) {
@@ -334,7 +323,7 @@ async function cmdRun(args: string[]): Promise<void> {
 
 async function cmdWatch(args: string[]): Promise<void> {
   const { values } = parseArgs({ args, options: { live: { type: 'boolean', default: false }, interval: { type: 'string', default: '300' } } });
-  const intervalMs = positiveNumber(values.interval!, '--interval') * 1000;
+  const intervalMs = intervalMilliseconds(values.interval!, '--interval');
   if (!values.live) {
     explainLiveEnv();
     fail('Refusing to watch without --live.');

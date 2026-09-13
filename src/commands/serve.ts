@@ -3,11 +3,11 @@ import { runExhibit } from '../agent.js';
 import { buildLiveDeps } from '../config.js';
 import { startWebhookServer } from '../server/webhook.js';
 import type { TextMessage } from '../apps/types.js';
+import { intervalMilliseconds, portNumber } from '../cli-validation.js';
 
 // `exhibit serve` (PRD 6.13, 6.14): runs the Twilio inbound webhook and the scheduled watch loop
 // in one process, so an inbound text triggers an immediate run (founder commands feel responsive)
-// on top of the regular hourly cadence. Mirrors cmdWatch in src/cli.ts, which this command is
-// meant to register alongside (patch below, cli.ts not owned here).
+// on top of the regular hourly cadence.
 
 const LIVE_ENV_VARS = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN', 'GITHUB_TOKEN', 'EXHIBIT_OWNER_EMAIL'];
 
@@ -21,22 +21,10 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
-function positiveNumber(value: string, flag: string): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) fail(`${flag} must be a positive number; received '${value}'.`);
-  return parsed;
-}
-
-function portNumber(value: string): number {
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) fail(`--port must be an integer from 1 to 65535; received '${value}'.`);
-  return parsed;
-}
-
 export async function cmdServe(args: string[]): Promise<void> {
   const { values } = parseArgs({ args, options: { interval: { type: 'string', default: '3600' }, port: { type: 'string' } } });
   const port = portNumber(values.port ?? process.env.PORT ?? '8787');
-  const intervalMs = positiveNumber(values.interval!, '--interval') * 1000;
+  const intervalMs = intervalMilliseconds(values.interval!, '--interval');
 
   const missing = LIVE_ENV_VARS.filter((v) => !process.env[v]);
   if (missing.length || !process.env.EXHIBIT_PROFILE) {

@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 import type { DriveApi } from '../apps/types.js';
 import { buildLiveDeps } from '../config.js';
@@ -10,9 +10,8 @@ import type { VerifyBinderResult } from '../integrity/verify.js';
 import { decodeOts } from '../integrity/ots.js';
 import { verifyProof } from '../integrity/opentimestamps.js';
 
-// `exhibit verify` (PRD 6.6, 6.14, E64). For the live CLI, deps come from src/config.ts
-// buildLiveDeps, per the file-ownership note in this repo's build instructions: the reviewer wires
-// this into src/cli.ts as a subcommand. For tests, deps are injected directly.
+// `exhibit verify` (PRD 6.6, 6.14, E64). Live dependencies come from src/config.ts;
+// tests can inject the same interface directly.
 
 export interface VerifyCliDeps {
   drive: DriveApi;
@@ -72,16 +71,7 @@ function renderTable(result: VerifyBinderResult): string {
 interface DemoChain {
   kind: 'synthetic-fixture';
   roots: Record<string, string>;
-}
-
-function walkLocalFiles(dir: string): string[] {
-  const files: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory()) files.push(...walkLocalFiles(path));
-    else files.push(path);
-  }
-  return files;
+  artifacts: string[];
 }
 
 /** Verifies a demo export against the synthetic chain roots written by `exhibit demo`. */
@@ -92,20 +82,34 @@ export async function verifyExportedDemo(outDir: string): Promise<VerifyBinderRe
   if (!existsSync(chainPath)) throw new Error(`exhibit verify --demo: synthetic chain manifest not found at ${chainPath}. Re-run \`exhibit demo --out ${outDir}\` with this version.`);
 
   const chain = JSON.parse(readFileSync(chainPath, 'utf8')) as DemoChain;
-  if (chain.kind !== 'synthetic-fixture' || !chain.roots || typeof chain.roots !== 'object') {
+  if (
+    chain.kind !== 'synthetic-fixture'
+    || !chain.roots
+    || typeof chain.roots !== 'object'
+    || Array.isArray(chain.roots)
+    || !Array.isArray(chain.artifacts)
+    || chain.artifacts.length === 0
+    || chain.artifacts.some((path) => typeof path !== 'string' || path.length === 0)
+  ) {
     throw new Error(`exhibit verify --demo: invalid synthetic chain manifest at ${chainPath}.`);
   }
 
   const result: VerifyBinderResult = { files_checked: [], pending: [], passed: [], failed: [] };
-  const proofs = walkLocalFiles(binderRoot).filter((path) => path.endsWith('.ots')).sort();
-  if (proofs.length === 0) throw new Error(`exhibit verify --demo: no .ots proofs found under ${binderRoot}.`);
-
-  for (const proofPath of proofs) {
-    const artifactPath = proofPath.slice(0, -'.ots'.length);
-    const displayPath = relative(binderRoot, artifactPath);
+  const binderBoundary = `${resolve(binderRoot)}${sep}`;
+  const artifacts = [...new Set(chain.artifacts)].sort();
+  for (const displayPath of artifacts) {
+    const artifactPath = resolve(binderRoot, displayPath);
+    if (isAbsolute(displayPath) || !artifactPath.startsWith(binderBoundary)) {
+      throw new Error(`exhibit verify --demo: invalid artifact path '${displayPath}' in ${chainPath}.`);
+    }
+    const proofPath = `${artifactPath}.ots`;
     result.files_checked.push(displayPath);
     if (!existsSync(artifactPath)) {
-      result.failed.push({ path: displayPath, reason: `artifact is missing beside ${relative(binderRoot, proofPath)}` });
+      result.failed.push({ path: displayPath, reason: 'artifact is missing from the exported binder' });
+      continue;
+    }
+    if (!existsSync(proofPath)) {
+      result.failed.push({ path: displayPath, reason: `proof is missing at ${relative(binderRoot, proofPath)}` });
       continue;
     }
     try {
