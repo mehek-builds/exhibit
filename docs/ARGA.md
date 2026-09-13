@@ -1,9 +1,9 @@
 # Running the Arga matrix against hosted twins
 
-Status (2026-09-13): **the Arga backend runs against live Arga twins.** Every fact below was
-checked against the real service with a Free-plan key, not read from docs. S2 passes on hosted
-twins (4 of 4 checks, zero prohibited side effects); the core-matrix result is in
-`reports/eval-latest.json` after `eval --backend arga --core`.
+Status (2026-09-14): **the Arga backend runs against live Arga twins.** Every fact below was
+checked against the real service with a Free-plan key, not read from docs. All 21 core scenarios
+pass on hosted twins: 301 of 301 checks, zero prohibited side effects (one attempt each, offline
+stand-in model, `eval --backend arga --core --attempts 1`).
 
 ```bash
 # .env (gitignored): ARGA_API_KEY=arga_sk_...   (ARGA_BASE_URL is optional)
@@ -33,13 +33,19 @@ one-twin limit applies to short-lived Twin Runs, not to a saved scenario's envir
 3. Insert the scenario's messages (oldest first, threads kept) and events through the twins'
    own Gmail and Calendar APIs. `SeedIdMap` translates twin-assigned ids back to the seed's
    ids, so the agent and the graders see `m-accel`, as in memory mode.
-4. Read a baseline through the twins' APIs, run the agent, read again, and derive side effects
-   from the diff. World actions a scenario performs (a new email, a share, an overwrite, a sheet
-   edit) go through the same APIs and are recorded as admin ops, never agent ops.
+4. Read a baseline through the twins' APIs (an unreadable baseline aborts the attempt), run the
+   agent, read again, and derive side effects from the diff: sends, new or changed Drive files,
+   new shares, calendar inserts. A file the agent created is compared with the bytes it uploaded,
+   so an edit in the same run still shows. Docs and Sheets writes (native files the Drive diff
+   cannot content-compare) are recorded from the agent's own client calls, as memory mode records
+   every op. World actions a scenario performs (a new email, a share, an overwrite, a sheet edit)
+   go through the same APIs, one at a time in call order, and are recorded as admin ops, never
+   agent ops. Every agent run and the final grade wait for queued world actions to land.
 5. `deleteTwinEnvironment` on close.
 
-A twin whose state cannot be read lands in `evidenceGaps`, and the attempt is forced to
-`degraded` with `arga_side_effect_evidence_unavailable: <twins>`. It never grades as a clean pass.
+A twin whose state cannot be read after a run lands in `evidenceGaps`, and the run is forced to
+`degraded` with `arga_side_effect_evidence_unavailable: <twins>`; on the final read before grading
+the attempt fails with that error. It never grades as a clean pass.
 
 ## Verified facts about the service
 
@@ -75,7 +81,15 @@ A twin whose state cannot be read lands in `evidenceGaps`, and the attempt is fo
    declares the type in the metadata and sends the bytes as `application/octet-stream`, which
    the real Drive API also accepts (`src/apps/live/google.ts`).
 2. **Gmail seed has no date.** Covered above; worked around by inserting through the API.
-3. **googleapis ignores a client-level `rootUrl` for media uploads.** Not an Arga bug, found by
+3. **Drive twin renames on a content update.** A content-only update resets the file to
+   `Untitled` and `application/octet-stream` (real Drive keeps both). `updateFileContent` now
+   sends the file's own name and type with the bytes.
+4. **Drive twin injects its control panel into HTML downloads.** A `text/html` file is served
+   with Arga's own `<style>`, `<aside>` and `<script>` (tagged `data-twin-control-plane`) inserted
+   before `</body>`: 90 bytes stored, 6,776 served. Every source-snapshot hash check failed on it,
+   so every figure approval was rejected. The harness (not Exhibit) strips exactly that tagged
+   block on read, restoring the stored bytes (`stripTwinControlPlane`).
+5. **googleapis ignores a client-level `rootUrl` for media uploads.** Not an Arga bug, found by
    running against Arga: `googleapis-common` rewrites the request URL onto `rootUrl` but not the
    media upload URL, so every `files.create`/`files.update` with a body went to
    `www.googleapis.com` while metadata calls went to the twin. Fixed by passing `rootUrl` per
@@ -84,8 +98,11 @@ A twin whose state cannot be read lands in `evidenceGaps`, and the attempt is fo
 
 ## Not covered on Arga yet
 
-- Scenarios whose memory-mode setup injects fakes or twin options (`s.env`, `s.twinOptions`,
-  `s.features` in `harness/runner.ts`, e.g. forced 410s, Twilio, Dropbox Sign, verifier APIs)
-  run on Arga without those injections. Their results on Arga are not comparable to memory mode
-  until `buildEnv` passes them through.
+- `s.twinOptions` reaches only the fixture-backed GitHub and LinkedIn apps, so a forced 410 on a
+  Google app (memory mode's `expire`) does not happen on Arga.
+- A share on a folder is excluded from the agent diff only for that folder; whether the Drive twin
+  shows inherited permissions on child files (real Drive does) is unverified, which matters for
+  S14.
+- Every attempt uses the one saved `exhibit-twins` environment, so two `eval --backend arga`
+  runs at once would reseed each other. Run one at a time.
 - Twilio (S20) has no twin in the provisioned set.

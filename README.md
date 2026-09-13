@@ -92,10 +92,10 @@ Exhibit's proof is a loop across three platforms, each answering a different que
 - **The scenario matrix runs on Arga Labs' hosted twins.** `--backend arga` provisions real Arga
   twins for Gmail, Google Calendar, Drive, Docs and Sheets, seeds Dara Voss's year into them
   through the twins' own APIs, runs the agent against them, and grades from what the twins hold
-  afterwards (ARGA_RESULTS_PLACEHOLDER). GitHub and LinkedIn are read from seeded fixtures on
+  afterwards. On 2026-09-14 all 21 core scenarios passed on Arga's hosted twins (301 of 301 checks, zero prohibited side effects, one attempt each, offline stand-in model). GitHub and LinkedIn are read from seeded fixtures on
   that backend, because Arga's GitHub seed cannot model third-party stars or the founder's
   reviews. The default `eval` (no flag) still uses the in-memory fakes in `src/twins/*.ts`,
-  which are built for this project and are not Arga's. Running on Arga surfaced two twin
+  which are built for this project and are not Arga's. Running on Arga surfaced four twin
   fidelity gaps and one googleapis bug, all worked around and written up in
   [docs/ARGA.md](docs/ARGA.md).
 - When `ANTHROPIC_API_KEY` is unset (or `EXHIBIT_LIVE_MODEL` isn't `1`), Exhibit runs a

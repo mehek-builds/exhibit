@@ -238,7 +238,7 @@ function argaBackendStatusSection(m: MatrixResult): string {
     "1. The seed reaches the twins. Arga's Gmail seed schema has no date and no raw field, so Dara Voss's messages and events are inserted through the twins' own Gmail and Calendar APIs after the environment is ready, keeping each original's bytes, `Date:` header and thread.",
     "2. Side-effect grading has a real evidence source. The Google twins' admin state carries no op log, so each attempt reads the twins through their public APIs before and after the agent runs and derives writes from the difference. A twin that cannot be read forces the attempt to `degraded`, never a clean pass.",
     '',
-    "Twin fidelity notes for Arga: the Drive twin stores an empty body for uploads whose media part is `message/rfc822` or `application/json` (Exhibit now uploads bytes as `application/octet-stream` with the type in the metadata); the Gmail seed drops dates (worked around above); `/admin/stub-hits` is not available on the Google twins, so stub hits are observed only for the fixture-backed GitHub and LinkedIn apps. GitHub and LinkedIn are not Arga twins in this setup.",
+    "Twin fidelity notes for Arga: the Drive twin stores an empty body for uploads whose media part is `message/rfc822` or `application/json` (Exhibit now uploads bytes as `application/octet-stream` with the type in the metadata); it resets a file to `Untitled` on a content-only update (Exhibit now sends the name and type back); it injects its own control-panel markup into `text/html` downloads, which broke every snapshot hash (the harness strips that tagged block on read); the Gmail seed drops dates (worked around above); `/admin/stub-hits` is not available on the Google twins, so stub hits are observed only for the fixture-backed GitHub and LinkedIn apps. GitHub and LinkedIn are not Arga twins in this setup, and Docs and Sheets writes are recorded from the agent's own client calls.",
   ];
   if (m.backend === 'arga') {
     return ["Arga backend status. Every attempt in this batch ran on Arga Labs' hosted twins (Gmail, Google Calendar, Drive, Docs and Sheets).", '', ...facts].join('\n');
@@ -254,7 +254,7 @@ function argaSection(m: MatrixResult, mutation?: MutationResult): string {
   return [
     'Method. ' +
       (m.backend === 'arga' ? "All twins run on Arga Labs' hosted twins (backend: arga)" : "All twins run under Exhibit's in-memory harness (backend: " + m.backend + ')') +
-      ", one twin state per attempt, seeded through the scenario's `seed()` with a known answer. Between attempts the twins are reset. Each attempt is graded from the twin end state, not from Exhibit's own logs. After every attempt the grader reads the twins' stub-hit list; a stub hit on any endpoint Exhibit depends on fails the attempt.",
+      ", one twin state per attempt, seeded through the scenario's `seed()` with a known answer. Between attempts the twins are reset. Each attempt is graded from the twin end state, not from Exhibit's own logs. After every attempt the grader reads the twins' stub-hit list; a stub hit on any endpoint Exhibit depends on fails the attempt" + (m.backend === 'arga' ? ' (on Arga, only the fixture-backed GitHub and LinkedIn apps report stub hits; the Google twins expose no stub-hit endpoint).' : '.'),
     '',
     "The synthetic founder. \"Dara Voss\", a fictional founder with one seeded year, from harness/corpus.ts.",
     '',
