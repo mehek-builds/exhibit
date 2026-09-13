@@ -408,8 +408,16 @@ async function runSignBothApprovalsMutation(disabled: string[]): Promise<{ caugh
     const state = JSON.parse(env.ledger.get(`sign:${id}`) ?? '{}') as { requestId?: string; stage?: string };
     const requests = fake.state().requests;
     const requestExists = !!state.requestId || requests.some((req) => req.signerEmail === r.email);
-    // caught === true means the guard held (no request without both approvals) -- the mutation survived.
-    return { caught: !requestExists, detail: `state=${JSON.stringify(state)}, requests=${JSON.stringify(requests.map((req) => req.signerEmail))}` };
+    // The brief's "created without both approvals" count must see this bypass too: the created
+    // event has to record the missing recommender confirmation rather than claim both approvals.
+    const created = env.ledger.events({ kind: 'signature' }).filter((e) => e.detail.status === 'created' && e.detail.letter_id === id);
+    const metricHonest = created.length > 0 && created.every((e) => e.detail.recommender_confirmed === false);
+    // caught === true means the mutation survived: the guard held (no request), or a request went out
+    // but the signature event claimed both approvals, so the reliability brief would under-report it.
+    return {
+      caught: !requestExists || !metricHonest,
+      detail: `state=${JSON.stringify(state)}, requests=${JSON.stringify(requests.map((req) => req.signerEmail))}, created events report recommender_confirmed=${JSON.stringify(created.map((e) => e.detail.recommender_confirmed))}`,
+    };
   } finally {
     await env.close();
   }

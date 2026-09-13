@@ -67,14 +67,44 @@ function buildBackfillText(): string {
   return 'Backfill finished.';
 }
 
-function timeSensitiveLine(candidates: CandidateRow[], now: Date): string | null {
+interface NudgeDate {
+  date: string;
+  kind: 'deadline' | 'event';
+}
+
+/** The date that should drive the time-sensitive nudge for an unanswered invite: its own reply
+ * deadline or event date, parsed from the invite text at verify time (verifier.ts/inviteDate.ts)
+ * and persisted alongside the judging case under the candidate's own ledger key -- no schema
+ * churn on CandidateRow. Falls back to `event_date` (today's behaviour) when the invite carried no
+ * parseable date of its own. */
+function nudgeDateOf(ledger: Ledger, c: CandidateRow): NudgeDate | null {
+  const raw = ledger.get(c.key);
+  if (raw) {
+    try {
+      const jc = JSON.parse(raw) as { actionDate?: NudgeDate | null };
+      if (jc.actionDate) return jc.actionDate;
+    } catch {
+      // fall through to event_date
+    }
+  }
+  return c.event_date ? { date: c.event_date, kind: 'event' } : null;
+}
+
+function dateLabel(kind: NudgeDate['kind']): string {
+  return kind === 'deadline' ? 'reply deadline' : 'event date';
+}
+
+function timeSensitiveLine(ledger: Ledger, candidates: CandidateRow[], now: Date): string | null {
   const soon = candidates
     .filter((c) => c.mapping.rule_id === 'C4-invite-unanswered')
-    .map((c) => ({ c, days: daysUntil(c.event_date, now) }))
-    .filter((x): x is { c: CandidateRow; days: number } => x.days !== null && x.days >= 0 && x.days <= 7)
+    .map((c) => {
+      const nd = nudgeDateOf(ledger, c);
+      return { c, nd, days: nd ? daysUntil(nd.date, now) : null };
+    })
+    .filter((x): x is { c: CandidateRow; nd: NudgeDate; days: number } => x.days !== null && x.days >= 0 && x.days <= 7)
     .sort((a, b) => a.days - b.days)[0];
   if (!soon) return null;
-  return `Time-sensitive: the judge invite "${soon.c.title}" is unanswered and its date is ${Math.round(soon.days)} day(s) away.`;
+  return `Time-sensitive: the judge invite "${soon.c.title}" is unanswered and its ${dateLabel(soon.nd.kind)} is ${Math.round(soon.days)} day(s) away.`;
 }
 
 /** Figures section of a proactive text: always listFiguresText's own numbering (finding 1), so
@@ -102,7 +132,7 @@ function buildFirstScorecardText(sc: Scorecard, ledger: Ledger, now: Date): stri
     `O-1A: ${sc.o1Met} of 8 criteria. EB-1A: ${sc.eb1Met} of 10.`,
     `Closest gap: ${sc.nextAction}.`,
   ];
-  const ts = timeSensitiveLine(ledger.candidates(), now);
+  const ts = timeSensitiveLine(ledger, ledger.candidates(), now);
   if (ts) parts.push(ts);
   parts.push(firstScorecardFiguresLine(ledger));
   return parts.join(' ');
@@ -245,14 +275,16 @@ export function createNotifier(opts: NotifierOptions = {}): AgentExtension {
         if (!r.deferred) ledger.set('first_scorecard_sent', '1');
       }
 
-      // Time-sensitive nudge: an unanswered judge invite whose date is within 7 days.
+      // Time-sensitive nudge: an unanswered judge invite whose reply deadline (or, failing that,
+      // event date) is within 7 days -- and still in the future.
       for (const c of ledger.candidates()) {
         if (c.mapping.rule_id !== 'C4-invite-unanswered') continue;
-        const days = daysUntil(c.event_date, now);
+        const nd = nudgeDateOf(ledger, c);
+        const days = nd ? daysUntil(nd.date, now) : null;
         if (days === null || days < 0 || days > 7) continue;
         const flag = `nudge_sent:${c.key}`;
         if (ledger.get(flag)) continue;
-        const body = `Reminder: the judge invite "${c.title}" from ${c.issuer ?? 'the organizer'} has not been answered, and its date is ${Math.round(days)} day(s) away.`;
+        const body = `Reminder: the judge invite "${c.title}" from ${c.issuer ?? 'the organizer'} has not been answered, and its ${dateLabel(nd!.kind)} is ${Math.round(days)} day(s) away.`;
         const r = await deliver(ctx, 'nudge', body, { replyDeadlineDays: days }, c.key);
         if (!r.deferred) ledger.set(flag, '1');
       }

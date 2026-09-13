@@ -1,6 +1,6 @@
 # Exhibit: system and reliability brief
 
-Batch: batch_1789334555656 | Release: 86de204 | Brief generated: 2026-09-13T21:22:55.270Z | Eval window: 2026-09-13T21:22:21.668Z to 2026-09-13T21:22:35.656Z
+Batch: batch_1789336747474 | Release: ef39be1 | Brief generated: 2026-09-13T22:01:03.135Z | Eval window: 2026-09-13T21:58:44.323Z to 2026-09-13T21:59:07.474Z
 
 ## 1. What it does
 
@@ -123,7 +123,7 @@ Mutation results (every mutation tried, whether it was killed or survived):
 | disable T-press-release + T-paid-placement (S1 must go red on the press-release trap) | T-press-release, T-paid-placement | S1 | killed (went red as expected) | Press release (gmail:m-pr): status: expected rejected, got qualifying; Press release (gmail:m-pr): eb1a_status: expected rejected, got qualifying; Press release (gmail:m-pr): never qualifying under {3}: status qualifying, criteria {3}; exactly 14 qualifying candidates: got 15: github:repo:loomwork/flakehound, github:review:r-orbit, item:captable.example|executed founder stock purchase agreement|2025-10-02, item:corpregistry.example|certificate of incorporation filed loomwork inc|2025-09-22, item:prwire.example|distributed loomwork launches flakehound 2 0|2026-08-20, item:safehub.example|congratulations your safe financing has closed|2026-03-05, judging:buildnight.example, judging:hackmesa.example, url:buildreport.example/interviews/dara-voss, url:devtoolsweekly.example/2026/03/loomwork-dara-voss-flaky-ci, url:forgeaccel.example/batches/f26, url:launchfest.example/2026/winners, url:ridgelinefellows.example/2026-fellows, url:shipitpod.example/episodes/212, url:signalnoise.example/2026/20-founders |
 | disable X-exhibition-eb1a-only (S16 must go red) | X-exhibition-eb1a-only | S16 | killed (went red as expected) | exhibition eb1a_criteria includes 'vii': ; exhibition eb1a_status qualifying: rejected; exhibition filed under 'eb1a-only/': undefined |
 | disable X-integrity-tamper-check (S22 verify must go red) | X-integrity-tamper-check | S22 | killed (went red as expected) | failed=[], passed=0 |
-| disable X-sign-both-approvals (signing must create a request after only one approval) | X-sign-both-approvals | S23 | killed (went red as expected) | state={"stage":"requested","approvalMsgId":"msg_sent_0066","requestId":"sigreq_0001"}, requests=["marco@hackmesa.example"] |
+| disable X-sign-both-approvals (signing must create a request after only one approval) | X-sign-both-approvals | S23 | killed (went red as expected) | state={"stage":"requested","approvalMsgId":"msg_sent_0066","requestId":"sigreq_0001"}, requests=["marco@hackmesa.example"], created events report recommender_confirmed=[false] |
 
 Arga backend status. Every attempt in this batch ran on Exhibit's own in-memory twins, not the hosted Arga service. `harness/arga-backend.ts` (the code that would drive real Arga twins) exists and is tested, but only against a local fake control plane and fake twin admin endpoints (`test/arga-backend.test.ts`, plain `node:http`, no network) — it has never been run against the real service, because no `ARGA_API_KEY` is present.
 
@@ -243,7 +243,7 @@ Discovery. Candidates found by source, and what became of them:
 
 Numbers from official data. Figures drawn from structured APIs versus web pages: not tracked separately in this batch's events; see section 10.
 
-Letters. Dropbox Sign requests (test mode): 6 created, 3 signed, 3 declined, 3 refused before sending by the day-mode safety gate, and 0 created without both approvals (target 0, read back from the Dropbox Sign event log).
+Letters. Dropbox Sign requests (test mode): 6 created, 3 signed, 3 declined, 3 refused before sending by the day-mode safety gate, and 0 created without both approvals (target 0, counted from Exhibit's own signature events, which record whether the recommender's confirmation and the founder's approval were present when each request was created).
 
 ## 11. What was real and what was simulated
 
