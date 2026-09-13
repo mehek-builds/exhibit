@@ -165,3 +165,36 @@ touched. GDELT stayed rate-limited for the whole window available in this pass, 
 path is still unconfirmed. No `LIVE_SMOKE_STATUS` entries were added or changed for `orcid`,
 `openreview`, `edgar`, or `gdelt` as a result of this pass — none of the four met the "OK, adapter
 parsed it" bar required for that table.
+
+## Full keyless run from a normal network (2026-09-14)
+
+`npx tsx scripts/live-smoke.ts`, run from a laptop on a residential network instead of the sandbox
+above. `scripts/live-smoke.ts` now also covers OpenAlex, Hugging Face Hub and SEC EDGAR. Queries used
+public names only (a public DOI, the `openai` Hugging Face org, the company name "Anthropic, PBC"
+for EDGAR). No response bodies were stored.
+
+| service | status | parser produced expected shape | count | latency |
+|---|---|---|---|---|
+| gdelt | 200 | yes | 0 items | 10449 ms |
+| hackernews | 200 | yes | 10 items | 2079 ms |
+| crossref | 200 | yes | 1 candidate | 611 ms |
+| ecosystems | 200 | yes | 1 candidate | 53 ms |
+| platformstats (GitHub REST) | 200 | yes | 2 candidates | 372 ms |
+| bls | 200 | yes | 1 candidate | 952 ms |
+| semanticscholar | 200 | yes | 1 candidate | 808 ms |
+| openalex | 200 | yes | 1 candidate | 683 ms |
+| huggingface | 200 | yes | 55 items | 534 ms |
+| edgar | 200 | yes | 2 items | 2797 ms |
+| archive (availability API) | 200 | yes | snapshot flag read | 826 ms |
+| opentimestamps | 200 | yes | 1 calendar path | 1653 ms |
+
+This resolves the two open items above: Semantic Scholar returned a citation count through the
+adapter, and SEC EDGAR answered with real Form D hits once the request did not come from a flagged
+network. OpenAlex and Hugging Face ran live for the first time. GDELT still matched no articles; a
+follow-up query ("Sam Altman" "OpenAI") hit GDELT's one-request-per-5-seconds rate limit.
+
+Claude, the same day: the three-item check in [docs/LLM-PATH.md](../LLM-PATH.md) ran against the live
+Anthropic API. The award email was classified as an award and mapped to criterion 1 (held for an
+attorney because the test sender's domain is not a verifiable issuer), the SAFE closing mapped to
+criterion 8 under `D-funding-remuneration`, and the newsletter was rejected. All three outputs were
+schema-valid.
