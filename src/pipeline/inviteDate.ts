@@ -12,11 +12,14 @@
 // nothing rather than guess when a date is anything but unambiguous.
 //
 // What IS recognised:
-//   - Reply-intent phrases only: "reply by", "respond by", "RSVP by", "let us know by",
-//     "confirm by" / "confirm your participation|availability by", "please reply/respond/confirm
-//     by", and "reply/response/RSVP/confirmation deadline(: | is )<date>". A bare "deadline", or
-//     one attached to submissions/projects/applications/registration/entries, is never treated as
-//     a reply deadline.
+//   - Reply-intent phrases only: "reply by", "respond by", "RSVP by", "get back to us/me by",
+//     "confirm your participation|attendance|availability by", "confirm whether you can
+//     judge|join|attend by", "please confirm by" (confirm directly adjacent to "by", with no
+//     other object in between), "let us/me know if/whether you can judge|join|attend|make it by",
+//     and "reply/response/RSVP/confirmation deadline(: | is )<date>". A bare "deadline", one
+//     attached to submissions/projects/applications/registration/entries, "confirm" attached to
+//     any other object (travel, hotel, flight, dietary, registration, ...), and "let us/me know"
+//     about anything other than attending/judging, are never treated as a reply deadline.
 //   - Event/judging phrases: "judge ... on <date>", "the event is on <date>", "takes place (on)
 //     <date>", "held on <date>" -- only when the date is within the same sentence as the phrase.
 //   - Date formats: "September 18[, 2026]" / "Sept. 18th" (month-first, optional weekday prefix,
@@ -147,10 +150,18 @@ function toISO(parsed: ParsedDate, reference: Date): string | null {
 const DATE_CHARS = "[A-Za-z0-9][A-Za-z0-9,.\\/ -]{2,24}";
 
 // Reply-intent phrases ONLY (PRD 4.1/6.13): a bare "deadline", or one tied to submissions,
-// projects, applications, registration or entries, is never a reply deadline (fixes B2).
+// projects, applications, registration or entries, is never a reply deadline (fixes B2). Every
+// verb here is one that asks the invitee to say yes or no to judging -- "confirm" and "let us/me
+// know" only count when their object is participation/attendance/availability (or when "confirm"
+// is directly adjacent to "by", as in "please confirm by"); a logistics object (travel, hotel,
+// flight, dietary, registration, ...) never turns "confirm"/"let us know" into a reply deadline.
+const REPLY_VERB =
+  `(?:reply|respond|rsvp|get back to (?:us|me)|` +
+  `let (?:us|me) know (?:if|whether) you can (?:judge|join|attend|make it)|` +
+  `confirm\\s+(?:your\\s+)?(?:participation|attendance|availability|whether you can (?:judge|join|attend)))`;
 const DEADLINE_RE = new RegExp(
-  `(?:reply|respond|rsvp|let us know|confirm(?:\\s+(?:your\\s+)?(?:participation|availability))?)` +
-    `[^.\\n]{0,40}?\\bby\\b\\s+(${DATE_CHARS})` +
+  `${REPLY_VERB}[^.\\n]{0,40}?\\bby\\b\\s+(${DATE_CHARS})` +
+    `|(?:please\\s+)?confirm\\s+by\\s+(${DATE_CHARS})` +
     `|(?:reply|response|rsvp|confirmation)\\s+deadline(?:\\s+is\\b|:)?\\s*(${DATE_CHARS})`,
   'i',
 );
@@ -190,7 +201,7 @@ export function parseInviteActionDate(text: string, referenceDateStr: string | n
   const clean = stripQuoted(text);
 
   const dm = clean.match(DEADLINE_RE);
-  const dPhrase = dm?.[1] ?? dm?.[2];
+  const dPhrase = dm?.[1] ?? dm?.[2] ?? dm?.[3];
   if (dPhrase) {
     const parsed = parseDatePhrase(dPhrase);
     const iso = parsed ? toISO(parsed, reference) : null;

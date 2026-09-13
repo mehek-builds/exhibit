@@ -3,6 +3,8 @@ import { createNotifier } from '../src/notify/notifier.js';
 import { MemoryTwilio } from '../src/twins/twilio.js';
 import { DARA, fullYearSeed, mail, NOW, seed } from '../harness/corpus.js';
 import { createHarnessEnv } from '../harness/env.js';
+import { TwinStubError } from '../src/apps/types.js';
+import { failAll, failingApp } from '../harness/faults.js';
 
 function withSms() {
   return (env: ReturnType<typeof createHarnessEnv>) =>
@@ -337,6 +339,272 @@ describe('unanswered judge invite nudge uses the invite text date, not the email
       const textOut = env.deps.ledger.events({ kind: 'text_out' }).find((e) => e.detail.kind === 'nudge');
       expect(String(textOut?.detail.body)).toContain('reply deadline');
       expect(String(textOut?.detail.body)).toContain('2 day');
+    } finally {
+      await env.close();
+    }
+  });
+
+  // Regression tests for review findings R1 (reply-intent regex), R2 (Gmail outage during
+  // backfill), R3 (forwarded legacy invite), and the efficiency follow-up (backfill must not
+  // re-list the mailbox per legacy case).
+
+  it('R1: a false "confirm your travel arrangements by" deadline never nudges; the real event date does, later', async () => {
+    const invite = mail({
+      id: 'm-nudge-r1',
+      from: 'HackX <judges@hackxr1.example>',
+      date: '2026-08-01T12:00:00Z',
+      subject: 'Invitation to judge HackX',
+      body:
+        "Hi Dara,\n\nWe'd love you to judge HackX on October 20, 2026. Please confirm your travel arrangements by September 16.\n\nHackX",
+    });
+    const env = createHarnessEnv({
+      seed: seed({ gmail: [invite] }),
+      now: atLocalMorning('2026-09-14T16:00:00Z'), // 2 days before the fake "deadline"; the real event is 36 days out
+      gate: 'library',
+      twilio: withSms(),
+      extensions: () => [createNotifier()],
+    });
+    try {
+      await env.run();
+      expect(nudgeNotifications(env).length).toBe(0);
+      const c = env.deps.ledger.candidates().find((x) => x.title.includes('HackX'));
+      const jc = JSON.parse(env.deps.ledger.get(c!.key) ?? '{}');
+      expect(jc.actionDate).toEqual({ date: '2026-10-20T00:00:00.000Z', kind: 'event' });
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('R1: "get back to us by" is restored as a reply deadline and nudges', async () => {
+    const invite = mail({
+      id: 'm-nudge-r1-getback',
+      from: 'HackX <judges@hackxgetback.example>',
+      date: '2026-08-01T12:00:00Z',
+      subject: 'Invitation to judge HackX',
+      body: 'Hi Dara,\n\nWould you judge HackX? Please get back to us by September 17.\n\nHackX',
+    });
+    const env = createHarnessEnv({
+      seed: seed({ gmail: [invite] }),
+      now: atLocalMorning('2026-09-14T16:00:00Z'), // 3 days before the deadline
+      gate: 'library',
+      twilio: withSms(),
+      extensions: () => [createNotifier()],
+    });
+    try {
+      await env.run();
+      const nudges = nudgeNotifications(env);
+      expect(nudges.length).toBe(1);
+      const textOut = env.deps.ledger.events({ kind: 'text_out' }).find((e) => e.detail.kind === 'nudge');
+      expect(String(textOut?.detail.body)).toContain('reply deadline');
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('R2: a Gmail outage during backfill leaves a legacy case unstamped; the next run, once Gmail recovers, backfills and nudges', async () => {
+    const invite = mail({
+      id: 'm-nudge-r2',
+      from: 'HackX <judges@hackxr2.example>',
+      date: '2026-08-01T12:00:00Z',
+      subject: 'Invitation to judge HackX',
+      body: "Hi Dara,\n\nWe'd love you to judge HackX on September 30, 2026. Please reply by September 17.\n\nHackX",
+    });
+    const env = createHarnessEnv({
+      seed: seed({ gmail: [invite] }),
+      now: atLocalMorning('2026-08-02T16:00:00Z'),
+      gate: 'library',
+      twilio: withSms(),
+      extensions: () => [createNotifier()],
+    });
+    try {
+      await env.run();
+      const key = 'judging:hackxr2.example';
+      const jc = JSON.parse(env.deps.ledger.get(key) ?? '{}');
+      expect('actionDate' in jc).toBe(true);
+      // Simulate a legacy case: strip the field entirely.
+      delete jc.actionDate;
+      env.deps.ledger.set(key, JSON.stringify(jc));
+
+      // Gmail goes down (a real outage, not a twin signal) just before the deadline.
+      const downApps = failingApp(env.deps.apps, 'gmail', 'throw');
+      env.deps.apps = downApps;
+      env.clock.set(new Date('2026-09-14T16:00:00Z')); // 3 days before the Sept 17 deadline
+      const degradedSummary = await env.run();
+      expect(degradedSummary.degraded).toContain('gmail');
+
+      const stillLegacy = JSON.parse(env.deps.ledger.get(key) ?? '{}');
+      expect('actionDate' in stillLegacy).toBe(false);
+      // event_date (the invite's own stale send date) never produces a false nudge while down.
+      expect(nudgeNotifications(env).filter((e) => e.run_id === degradedSummary.runId).length).toBe(0);
+
+      // Gmail recovers.
+      downApps.fault.down = false;
+      env.clock.advance(1000);
+      await env.run();
+
+      const after = JSON.parse(env.deps.ledger.get(key) ?? '{}');
+      expect(after.actionDate).toEqual({ date: '2026-09-17T00:00:00.000Z', kind: 'deadline' });
+      const nudges = nudgeNotifications(env);
+      expect(nudges.filter((e) => e.detail.sent === true).length).toBe(1);
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('R3: a forwarded legacy invite is backfilled from the unwrapped original, not the raw forward, and nudges', async () => {
+    const forwarded = mail({
+      id: 'm-nudge-r3-fwd',
+      from: 'A Friend <friend@example.com>',
+      date: '2026-08-05T12:00:00Z',
+      subject: 'Fwd: Invitation to judge HackX',
+      body:
+        'Dara, thought you\'d want to see this!\n\n' +
+        '---------- Forwarded message ----------\n' +
+        'From: HackX <judges@hackxr3fwd.example>\n' +
+        'Date: Sat, 1 Aug 2026 12:00:00 -0700\n' +
+        'Subject: Invitation to judge HackX\n' +
+        'To: <dara@loomwork.example>\n\n' +
+        "Hi Dara,\n\nWe'd love you to judge HackX on September 30, 2026. Please reply by September 17.\n\nHackX",
+    });
+    const env = createHarnessEnv({
+      seed: seed({ gmail: [forwarded] }),
+      now: atLocalMorning('2026-08-06T16:00:00Z'),
+      gate: 'library',
+      twilio: withSms(),
+      extensions: () => [createNotifier()],
+    });
+    try {
+      await env.run();
+      const key = 'judging:hackxr3fwd.example';
+      const jc = JSON.parse(env.deps.ledger.get(key) ?? '{}');
+      expect('actionDate' in jc).toBe(true);
+      // Simulate a legacy case ingested before actionDate parsing existed.
+      delete jc.actionDate;
+      env.deps.ledger.set(key, JSON.stringify(jc));
+
+      env.clock.set(new Date('2026-09-14T16:00:00Z')); // 3 days before the Sept 17 deadline
+      await env.run();
+
+      const after = JSON.parse(env.deps.ledger.get(key) ?? '{}');
+      // Backfilling the raw forward (bug) would strip everything from "Forwarded message" onward
+      // and find nothing; backfilling the unwrapped original recovers the real deadline.
+      expect(after.actionDate).toEqual({ date: '2026-09-17T00:00:00.000Z', kind: 'deadline' });
+      const nudges = nudgeNotifications(env);
+      expect(nudges.length).toBe(1);
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('efficiency: backfilling 4 legacy cases in one run makes zero extra Gmail list calls (reuses the run\'s own intake read)', async () => {
+    const invites = ['a', 'b', 'c', 'd'].map((letter, i) =>
+      mail({
+        id: `m-nudge-eff-${letter}`,
+        from: `HackX ${letter} <judges@hackxeff${letter}.example>`,
+        date: '2026-08-01T12:00:00Z',
+        subject: `Invitation to judge HackX${letter}`,
+        body: `Hi Dara,\n\nWe'd love you to judge HackX${letter} on September ${20 + i}, 2026. Please reply by September ${17 + i}.\n\nHackX${letter}`,
+      }),
+    );
+    const env = createHarnessEnv({
+      seed: seed({ gmail: invites }),
+      now: atLocalMorning('2026-08-02T16:00:00Z'),
+      gate: 'library',
+      twilio: withSms(),
+      extensions: () => [createNotifier()],
+    });
+    try {
+      await env.run();
+      const keys = ['a', 'b', 'c', 'd'].map((letter) => `judging:hackxeff${letter}.example`);
+      for (const key of keys) {
+        const jc = JSON.parse(env.deps.ledger.get(key) ?? '{}');
+        expect('actionDate' in jc).toBe(true);
+        delete jc.actionDate;
+        env.deps.ledger.set(key, JSON.stringify(jc));
+      }
+
+      // Spy on the raw call count for the next run, which must backfill all 4 legacy cases.
+      let calls = 0;
+      const orig = env.deps.apps.gmail.listMessages.bind(env.deps.apps.gmail);
+      env.deps.apps.gmail.listMessages = () => {
+        calls += 1;
+        return orig();
+      };
+
+      env.clock.advance(1000);
+      await env.run();
+
+      // Exactly the one call intake itself always makes -- zero extra from backfilling 4 cases.
+      expect(calls).toBe(1);
+      for (const key of keys) {
+        const after = JSON.parse(env.deps.ledger.get(key) ?? '{}');
+        expect('actionDate' in after).toBe(true);
+        expect(after.actionDate).not.toBeNull();
+      }
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('R2: a twin stub hit during a run with a pending legacy case still propagates and leaves the case untouched', async () => {
+    const invite = mail({
+      id: 'm-nudge-stub',
+      from: 'HackX <judges@hackxstub.example>',
+      date: '2026-08-01T12:00:00Z',
+      subject: 'Invitation to judge HackX',
+      body: "Hi Dara,\n\nWe'd love you to judge HackX on September 30, 2026. Please reply by September 17.\n\nHackX",
+    });
+    const env = createHarnessEnv({
+      seed: seed({ gmail: [invite] }),
+      now: atLocalMorning('2026-08-02T16:00:00Z'),
+      gate: 'library',
+      twilio: withSms(),
+      extensions: () => [createNotifier()],
+    });
+    try {
+      await env.run();
+      const key = 'judging:hackxstub.example';
+      const jc = JSON.parse(env.deps.ledger.get(key) ?? '{}');
+      delete jc.actionDate;
+      env.deps.ledger.set(key, JSON.stringify(jc));
+
+      env.deps.apps.gmail = failAll(env.deps.apps.gmail, () => new TwinStubError('gmail/messages.list'));
+      env.clock.set(new Date('2026-09-14T16:00:00Z'));
+
+      let caught: unknown;
+      try {
+        await env.run();
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(TwinStubError);
+
+      const stillLegacy = JSON.parse(env.deps.ledger.get(key) ?? '{}');
+      expect('actionDate' in stillLegacy).toBe(false);
+    } finally {
+      await env.close();
+    }
+  });
+
+  it('no proactive text ever contains "[object Promise]" (review sanity check)', async () => {
+    const invite = mail({
+      id: 'm-nudge-promise',
+      from: 'HackX <judges@hackxpromise.example>',
+      date: '2026-08-01T12:00:00Z',
+      subject: 'Invitation to judge HackX',
+      body: "Hi Dara,\n\nWe'd love you to judge HackX on September 30, 2026. Please reply by September 17.\n\nHackX",
+    });
+    const env = createHarnessEnv({
+      seed: seed({ gmail: [invite] }),
+      now: atLocalMorning('2026-09-14T16:00:00Z'),
+      gate: 'library',
+      twilio: withSms(),
+      extensions: () => [createNotifier()],
+    });
+    try {
+      await env.run();
+      const outs = env.deps.ledger.events({ kind: 'text_out' }).map((e) => String(e.detail.body));
+      expect(outs.join('\n')).not.toContain('[object Promise]');
     } finally {
       await env.close();
     }

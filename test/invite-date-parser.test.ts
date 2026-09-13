@@ -125,6 +125,48 @@ const PARSE_CASES: Case[] = [
     reference: '2026-12-20T23:59:00Z',
     expected: { date: '2026-12-20T00:00:00.000Z', kind: 'deadline' },
   },
+  {
+    name: '"get back to us by" is a reply deadline (restored, review R1)',
+    text: 'Would you judge HackX? Please get back to us by September 16.',
+    reference: '2026-09-01T00:00:00Z',
+    expected: { date: '2026-09-16T00:00:00.000Z', kind: 'deadline' },
+  },
+  {
+    name: '"let us know if you can judge by" is a reply deadline (review R1)',
+    text: 'Would you judge HackX? Let us know if you can judge by September 16.',
+    reference: '2026-09-01T00:00:00Z',
+    expected: { date: '2026-09-16T00:00:00.000Z', kind: 'deadline' },
+  },
+  {
+    name: '"please confirm your participation by" is a reply deadline',
+    text: 'Would you judge HackX? Please confirm your participation by September 16.',
+    reference: '2026-09-01T00:00:00Z',
+    expected: { date: '2026-09-16T00:00:00.000Z', kind: 'deadline' },
+  },
+  {
+    name: 'bare "please confirm by" (adjacent to by, no other object) is a reply deadline',
+    text: 'Would you judge HackX? Please confirm by September 16.',
+    reference: '2026-09-01T00:00:00Z',
+    expected: { date: '2026-09-16T00:00:00.000Z', kind: 'deadline' },
+  },
+  {
+    name: '"confirm your travel arrangements by" is logistics, not a reply deadline (review R1); falls back to the event date',
+    text: "We'd love for you to judge HackX on October 20, 2026. Please confirm your travel arrangements by September 16.",
+    reference: '2026-09-01T00:00:00Z',
+    expected: { date: '2026-10-20T00:00:00.000Z', kind: 'event' },
+  },
+  {
+    name: '"let us know your dietary needs by" is not a reply deadline; falls back to the event date',
+    text: 'Judge HackX on October 20, 2026. Let us know your dietary needs by September 16.',
+    reference: '2026-09-01T00:00:00Z',
+    expected: { date: '2026-10-20T00:00:00.000Z', kind: 'event' },
+  },
+  {
+    name: '"confirm your hotel booking by" is not a reply deadline; falls back to the event date',
+    text: 'Judge HackX on October 20, 2026. Please confirm your hotel booking by September 16.',
+    reference: '2026-09-01T00:00:00Z',
+    expected: { date: '2026-10-20T00:00:00.000Z', kind: 'event' },
+  },
 ];
 
 describe('parseInviteActionDate: must return nothing (conservative on ambiguity/invalidity)', () => {
