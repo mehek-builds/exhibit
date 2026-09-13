@@ -795,3 +795,33 @@ describe('pr-review-6 H1/H2: explicit-rule mapping through the mapper.ts path (t
     });
   }
 });
+
+describe('J1: the board, investors or a "Staff" title near the founder\'s own grant never make it someone else\'s', () => {
+  const S4 = 'Dara Voss purchased 8,000,000 shares of common stock of Loomwork, Inc. under the Founder Stock Purchase Agreement dated October 1, 2025. The shares vest over four years.';
+  const run = (text: string) => applyExplicitRules(redacted({ app: 'gmail', id: `m-j1-${text.length}`, title: 'Update', text }), cls({ kind: 'remuneration' }), PROFILE);
+
+  it('keeps the founder\'s own equity grant qualifying (must-count #8)', () => {
+    for (const text of [
+      `${S4} The grant was approved by the board.`,
+      'Hi Dara, the board approved your option grant of 500,000 shares.',
+      `${S4} Dara holds them alongside our investors.`,
+      'Dara, your equity grant as Chief of Staff vests over four years.',
+    ]) {
+      const m = run(text);
+      expect(m?.rule_id, text).toBe('D-equity-comparable');
+      expect(m?.status, text).toBe('qualifying');
+    }
+  });
+
+  it('still never qualifies a grant or contract that belongs to someone else', () => {
+    for (const text of [
+      'Thanks to all of you. Board approved the equity grant plan for the sales team. Revenue $5M.',
+      'Q3 update for you, our investors: we created an option grant pool for new employees. ARR $2M.',
+      'Hi Dara, our first hire signed an employment agreement; her start date is October 1. ARR hit $2M.',
+      'Board approved the option grant pool for new employees.',
+      'We approved equity grants for staff this quarter. ARR $2M.',
+    ]) {
+      expect(run(text)?.status, text).not.toBe('qualifying');
+    }
+  });
+});

@@ -94,19 +94,22 @@ const FOUNDER_PRONOUN_RE = /\b(?:you|your|the\s+founder)\b/i;
 
 /**
  * Nouns that attribute pay or a contract to someone other than the founder: a new hire, an
- * employee, an engineer, a candidate, a contractor, a team member, the sales team, staff, an
- * advisor, an intern, investors, the board, "our first" (hire/engineer/...), or a co-founder (who
- * isn't necessarily the founder herself).
+ * employee, a candidate, a contractor, a team member, the sales team, an advisor, an intern, "our
+ * first" (hire/engineer/...), or a co-founder (who isn't necessarily the founder herself).
+ * Deliberately NOT here: "board" and "investors" (J1). They approve or sit alongside the founder's
+ * own grant ("the board approved your option grant", "alongside our investors"), so naming them
+ * never means the grant belongs to someone else.
  */
 const OTHER_PARTY_RE =
-  /\b(?:new\s+)?hires?\b|\bemployees?\b|\bcandidates?\b|\bcontractors?\b|\bteam\s+members?\b|\bsales\s+team\b|\bstaff\b|\badvisors?\b|\binterns?\b|\binvestors?\b|\bboard\b|\bour\s+first\b|\bco-?founders?\b/i;
+  /\b(?:new\s+)?hires?\b|\bemployees?\b|\bcandidates?\b|\bcontractors?\b|\bteam\s+members?\b|\bsales\s+team\b|\badvisors?\b|\binterns?\b|\bour\s+first\b|\bco-?founders?\b/i;
 
 /**
- * "engineer(s)" as a third-party noun -- deliberately lower-case-only (no /i), so a Title-Case job
- * title naming the founder's own new role ("Staff Engineer" in an offer letter addressed to her,
- * S16) is never mistaken for a third-party hire the way a lower-case "our first engineer" is.
+ * "engineer(s)" and "staff" as third-party nouns -- deliberately lower-case-only (no /i), so a
+ * Title-Case job title naming the founder's own role ("Staff Engineer" in an offer letter addressed
+ * to her, S16; "Chief of Staff") is never mistaken for a third party the way a lower-case "our
+ * first engineer" or "salaries for staff" is.
  */
-const OTHER_PARTY_ENGINEER_RE = /\bengineers?\b/;
+const OTHER_PARTY_ENGINEER_RE = /\b(?:engineers?|staff)\b/;
 
 /**
  * A pay-or-agreement anchor (H1/H2 fix): salary, base pay, pay, wages, compensation, an offer (or
