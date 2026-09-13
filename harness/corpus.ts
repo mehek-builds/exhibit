@@ -244,7 +244,7 @@ export const E = {
     sent({ id: 'm-dj-reply', threadId: 'm-dj-invite', to: 'judging@devjam.example', date: '2026-04-03T09:00:00Z', subject: 'Re: Invitation to judge DevJam 2026', body: "Thanks for thinking of me. Unfortunately I can't make it this year." }),
   ],
   codecraftUnanswered: [
-    mail({ id: 'm-cc-invite', from: 'CodeCraft <judges@codecraft.example>', date: '2026-08-30T17:00:00Z', subject: 'Invitation to judge CodeCraft Hack', body: "Hi Dara,\n\nWe'd love to invite you to be a judge at CodeCraft Hack on October 18, 2026.\n\nCodeCraft" }),
+    mail({ id: 'm-cc-invite', from: 'CodeCraft <judges@codecraft.example>', date: '2026-08-30T17:00:00Z', subject: 'Invitation to judge CodeCraft Hack', body: "Hi Dara,\n\nWe'd love to invite you to be a judge at CodeCraft Hack on August 30, 2026.\n\nCodeCraft" }),
   ],
   rising: [
     mail({ id: 'm-rising', from: 'Rising Builders <hello@risingbuilders.example>', date: '2026-06-20T15:00:00Z', subject: "You've been named a 2026 Rising Builder", body: 'Hi Dara, you have been named a 2026 Rising Builder. Share the badge on your profile! https://risingbuilders.example/2026' }),
