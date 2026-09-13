@@ -1,12 +1,14 @@
 import type { AgentExtension, ExtensionContext } from '../agent.js';
 import type { CandidateRow, Ledger } from '../ledger.js';
 import type { Scorecard } from '../binder/scorecard.js';
-import type { TwilioApi } from '../apps/types.js';
+import type { GmailMessage, TwilioApi } from '../apps/types.js';
 import type { FounderProfile } from '../types.js';
 import { listFiguresText } from '../text/channel.js';
 import { DEFAULT_QUIET_HOURS, inQuietHours } from './quietHours.js';
 import { buildSelfTextPacket } from './packets.js';
 import type { NotifyKind, SelfTextFacts } from './packets.js';
+import { parseInviteActionDate } from '../pipeline/inviteDate.js';
+import { gmailItem } from '../pipeline/intake.js';
 
 // First-run flow and proactive notifications (PRD 4.1, 6.8, 6.13). Every proactive text is gated by
 // worth-sending and by quiet hours; a `send` during quiet hours is deferred, never dropped, to the
@@ -72,17 +74,87 @@ interface NudgeDate {
   kind: 'deadline' | 'event';
 }
 
+interface JudgingCaseForBackfill {
+  actionDate?: NudgeDate | null;
+  invite?: { date: string | null; subject: string } | null;
+  primaryItemId?: { app: string; id: string } | null;
+  [key: string]: unknown;
+}
+
+/** Legacy judging cases (created before invite-date parsing existed) never got an `actionDate`
+ * key at all. Rather than leave them stuck on the `event_date` fallback forever, compute it once
+ * from the invite's own text and persist it back to `judging:<domain>` so it isn't recomputed on
+ * every run.
+ *
+ * This makes NO Gmail call of its own (fixes the follow-up efficiency issue): it is handed the
+ * same message list intake already read this run (`ExtensionContext.context.allMessages`), so
+ * backfilling any number of legacy cases costs zero extra `gmail.listMessages` calls. `messages`
+ * is `null` when Gmail was degraded this run (intake couldn't read it) -- in that case the case is
+ * left untouched (not stamped) so the next run, once Gmail is back, retries from scratch (fixes
+ * the permanent-null regression). The field is only ever stamped `null` when the invite text was
+ * actually retrieved and genuinely contains no parseable date, or when the source message can't
+ * exist at all (not a Gmail item, or no invite recorded). */
+function backfillActionDate(ledger: Ledger, c: CandidateRow, messages: GmailMessage[] | null): NudgeDate | null {
+  const raw = ledger.get(c.key);
+  if (!raw) return null;
+  let jc: JudgingCaseForBackfill;
+  try {
+    jc = JSON.parse(raw) as JudgingCaseForBackfill;
+  } catch {
+    return null;
+  }
+  if ('actionDate' in jc) return jc.actionDate ?? null;
+
+  const primaryItemId = jc.primaryItemId;
+  const invite = jc.invite;
+  if (!invite || !primaryItemId || primaryItemId.app !== 'gmail') {
+    // The source message can't exist for this case: stamp null now, nothing to retry for.
+    jc.actionDate = null;
+    ledger.set(c.key, JSON.stringify(jc));
+    return null;
+  }
+
+  if (messages === null) {
+    // Gmail was unreadable this run; leave the case unstamped so the next run retries.
+    return null;
+  }
+
+  const msg = messages.find((m) => m.id === primaryItemId.id);
+  if (!msg) {
+    // Gmail was read successfully and the message really isn't in it (deleted, etc).
+    jc.actionDate = null;
+    ledger.set(c.key, JSON.stringify(jc));
+    return null;
+  }
+
+  // Build the text and reference date exactly as the verifier does at verify time
+  // (verifier.ts, `text = item.title + '\n' + item.text`, reference `item.date`), via the same
+  // `gmailItem`/`unwrapForward` unwrapping intake uses -- so a forwarded legacy invite gets the
+  // unwrapped original's date, not the raw forward's (fixes the forwarded-invite regression).
+  const item = gmailItem(msg);
+  const text = `${item.title}\n${item.text}`;
+  const computed = parseInviteActionDate(text, item.date);
+  jc.actionDate = computed;
+  ledger.set(c.key, JSON.stringify(jc));
+  return computed;
+}
+
 /** The date that should drive the time-sensitive nudge for an unanswered invite: its own reply
  * deadline or event date, parsed from the invite text at verify time (verifier.ts/inviteDate.ts)
  * and persisted alongside the judging case under the candidate's own ledger key -- no schema
  * churn on CandidateRow. Falls back to `event_date` (today's behaviour) when the invite carried no
- * parseable date of its own. */
-function nudgeDateOf(ledger: Ledger, c: CandidateRow): NudgeDate | null {
+ * parseable date of its own, or backfills a legacy case that never got the field at all. */
+function nudgeDateOf(ledger: Ledger, c: CandidateRow, messages: GmailMessage[] | null): NudgeDate | null {
   const raw = ledger.get(c.key);
   if (raw) {
     try {
       const jc = JSON.parse(raw) as { actionDate?: NudgeDate | null };
-      if (jc.actionDate) return jc.actionDate;
+      if ('actionDate' in jc) {
+        if (jc.actionDate) return jc.actionDate;
+      } else {
+        const backfilled = backfillActionDate(ledger, c, messages);
+        if (backfilled) return backfilled;
+      }
     } catch {
       // fall through to event_date
     }
@@ -90,17 +162,24 @@ function nudgeDateOf(ledger: Ledger, c: CandidateRow): NudgeDate | null {
   return c.event_date ? { date: c.event_date, kind: 'event' } : null;
 }
 
+/** Lazily resolves the message list legacy backfilling needs, at most once per notifier run, and
+ * only if at least one candidate actually needs it -- reusing intake's own read (see
+ * `backfillActionDate`) rather than ever calling Gmail again. */
+function messagesForBackfill(ctx: ExtensionContext): GmailMessage[] | null {
+  return ctx.context.degraded.includes('gmail') ? null : ctx.context.allMessages;
+}
+
 function dateLabel(kind: NudgeDate['kind']): string {
   return kind === 'deadline' ? 'reply deadline' : 'event date';
 }
 
-function timeSensitiveLine(ledger: Ledger, candidates: CandidateRow[], now: Date): string | null {
-  const soon = candidates
-    .filter((c) => c.mapping.rule_id === 'C4-invite-unanswered')
-    .map((c) => {
-      const nd = nudgeDateOf(ledger, c);
-      return { c, nd, days: nd ? daysUntil(nd.date, now) : null };
-    })
+function timeSensitiveLine(ledger: Ledger, candidates: CandidateRow[], now: Date, messages: GmailMessage[] | null): string | null {
+  const rows: { c: CandidateRow; nd: NudgeDate | null; days: number | null }[] = [];
+  for (const c of candidates.filter((c) => c.mapping.rule_id === 'C4-invite-unanswered')) {
+    const nd = nudgeDateOf(ledger, c, messages);
+    rows.push({ c, nd, days: nd ? daysUntil(nd.date, now) : null });
+  }
+  const soon = rows
     .filter((x): x is { c: CandidateRow; nd: NudgeDate; days: number } => x.days !== null && x.days >= 0 && x.days <= 7)
     .sort((a, b) => a.days - b.days)[0];
   if (!soon) return null;
@@ -125,14 +204,14 @@ function firstScorecardFiguresLine(ledger: Ledger): string {
   return `${pending.length} figure${pending.length === 1 ? '' : 's'} are waiting for your review: ${link}`;
 }
 
-function buildFirstScorecardText(sc: Scorecard, ledger: Ledger, now: Date): string {
+function buildFirstScorecardText(sc: Scorecard, ledger: Ledger, now: Date, messages: GmailMessage[] | null): string {
   const total = ledger.exhibits().length;
   const parts = [
     `Done. I found ${total} piece${total === 1 ? '' : 's'} of evidence you already have.`,
     `O-1A: ${sc.o1Met} of 8 criteria. EB-1A: ${sc.eb1Met} of 10.`,
     `Closest gap: ${sc.nextAction}.`,
   ];
-  const ts = timeSensitiveLine(ledger, ledger.candidates(), now);
+  const ts = timeSensitiveLine(ledger, ledger.candidates(), now, messages);
   if (ts) parts.push(ts);
   parts.push(firstScorecardFiguresLine(ledger));
   return parts.join(' ');
@@ -260,6 +339,9 @@ export function createNotifier(opts: NotifierOptions = {}): AgentExtension {
     async afterScorecard(ctx: ExtensionContext): Promise<void> {
       const { deps, now, summary } = ctx;
       const { ledger, profile } = deps;
+      // Resolved lazily (a property read of this run's own intake result -- see
+      // `messagesForBackfill`), so legacy-case backfilling never makes its own Gmail call.
+      const messages = messagesForBackfill(ctx);
 
       // Step 2: backfill completion, once.
       if (!ledger.get('backfill_done_at')) {
@@ -270,7 +352,7 @@ export function createNotifier(opts: NotifierOptions = {}): AgentExtension {
       // Step 3: the first-scorecard text, once, with real numbers from this run's scorecard.
       if (!ledger.get('first_scorecard_sent') && summary.scorecard) {
         const sc = summary.scorecard;
-        const body = buildFirstScorecardText(sc, ledger, now);
+        const body = buildFirstScorecardText(sc, ledger, now, messages);
         const r = await deliver(ctx, 'first_scorecard', body, { pendingFigures: sc.figures.pending }, null);
         if (!r.deferred) ledger.set('first_scorecard_sent', '1');
       }
@@ -279,7 +361,7 @@ export function createNotifier(opts: NotifierOptions = {}): AgentExtension {
       // event date) is within 7 days -- and still in the future.
       for (const c of ledger.candidates()) {
         if (c.mapping.rule_id !== 'C4-invite-unanswered') continue;
-        const nd = nudgeDateOf(ledger, c);
+        const nd = nudgeDateOf(ledger, c, messages);
         const days = nd ? daysUntil(nd.date, now) : null;
         if (days === null || days < 0 || days > 7) continue;
         const flag = `nudge_sent:${c.key}`;

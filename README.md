@@ -324,9 +324,6 @@ rejected, discovery results by source) is [BRIEF.md](BRIEF.md).
 
 **Watch it here (2:00): https://www.loom.com/share/448258deddc9416fb0f14c86e5be443f**
 
-The presenter script is in [docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md). Everything in the offline
-demo can be reproduced with the commands in section 3.
-
 ---
 
 ## Repository map
@@ -344,7 +341,7 @@ demo can be reproduced with the commands in section 3.
 | `src/demo.ts`, `src/cli.ts` | The two-minute demo and the `exhibit` CLI |
 | `docs/PRD.md`, `docs/ARCHITECTURE.md` | The spec and the code map |
 | `docs/ARGA.md`, `docs/LLM-PATH.md`, `docs/SECURITY-REVIEW.md`, `docs/integrations/` | Arga backend notes, the Claude model path, the security review, live-smoke and OpenTimestamps notes |
-| `docs/DEMO-SCRIPT.md`, `docs/sample-output/` | The two-minute presenter script and a committed slice of one demo run |
+| `docs/sample-output/` | A committed slice of one demo run |
 | `BRIEF.md`, `prompts/` | The generated reliability brief; the prompt graph, rule proofs and rule-change records |
 | `constraints/hard-constraints.md` | The 19 hard rules, mapped to enforcement |
 
