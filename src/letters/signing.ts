@@ -146,8 +146,10 @@ export function createSigningExtension(opts: SigningExtensionOptions): AgentExte
           status: 'created',
           test_mode: client.testMode,
           signer_email: r.email,
-          recommender_confirmed: Boolean(state.confirmationMsgId) || bothApprovalsDisabled,
-          founder_approved: true,
+          // Record what actually happened, never what the guard should have ensured: if the
+          // X-sign-both-approvals guard is bypassed, this event must show the missing confirmation.
+          recommender_confirmed: Boolean(state.confirmationMsgId),
+          founder_approved: Boolean(approval?.id),
         },
         at: now.toISOString(),
       });
