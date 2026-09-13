@@ -533,13 +533,14 @@ function integrityAndIntegrationsSection(m: MatrixResult): string {
   const dsDeclined = dsRequests.filter((e) => e.detail.status === 'declined').length;
   const dsUnapproved = createdEvents.filter((e) => e.detail.recommender_confirmed !== true || e.detail.founder_approved !== true).length;
   const artifactsFiled = m.attempts.reduce((n, a) => n + a.runs.reduce((k, r) => k + r.filed.length, 0), 0);
+  const confirmationSource = m.backend === 'memory' ? 'synthetic fixture headers' : 'the configured block-header source';
   return [
-    'Tamper-evidence. Every filed artifact\'s SHA-256 is stamped with OpenTimestamps, and every approved public source page is archived with the Internet Archive. `exhibit verify` re-checks the binder against both.',
+    'Tamper-evidence. Every stampable filed artifact\'s SHA-256 is stamped with OpenTimestamps, and every approved public source page is archived with the Internet Archive. `exhibit verify` re-checks filed artifact bytes against their timestamp proofs; archive results are recorded separately.',
     '',
     '| Measure | Result |',
     '|---|---|',
     `| Artifacts filed and stamped | ${timestamps.length} of ${artifactsFiled} |`,
-    `| Timestamp proofs confirmed in Bitcoin (the rest pending, upgraded nightly) | ${confirmed} |`,
+    `| Timestamp proofs confirmed by ${confirmationSource} (the rest pending, upgraded nightly) | ${confirmed} |`,
     `| \`exhibit verify\`: untouched files passing / altered file caught | ${verifyPass} / ${verifyCaught} |`,
     `| Approved public sources archived | ${archived} of ${eventCount(m, 'archive')} |`,
     '',
