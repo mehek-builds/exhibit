@@ -1,0 +1,93 @@
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cmdVerify, verifyExportedDemo } from '../src/commands/verify.js';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const binPath = join(here, '..', 'bin', 'exhibit.mjs');
+
+describe('exported demo verification fails closed', () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function makeExport(manifest?: unknown): { outDir: string; binder: string } {
+    const outDir = mkdtempSync(join(tmpdir(), 'exhibit-demo-invalid-'));
+    tempDirs.push(outDir);
+    const binder = join(outDir, 'drive', 'Exhibit binder');
+    mkdirSync(binder, { recursive: true });
+    if (manifest !== undefined) {
+      writeFileSync(join(outDir, 'integrity-chain.json'), `${JSON.stringify(manifest)}\n`);
+    }
+    return { outDir, binder };
+  }
+
+  it.each([
+    ['missing manifest', undefined],
+    ['wrong kind', { kind: 'bitcoin', roots: {}, artifacts: ['file.eml'] }],
+    ['array roots', { kind: 'synthetic-fixture', roots: [], artifacts: ['file.eml'] }],
+    ['missing artifacts', { kind: 'synthetic-fixture', roots: {} }],
+    ['empty artifacts', { kind: 'synthetic-fixture', roots: {}, artifacts: [] }],
+  ])('rejects a %s', async (_label, manifest) => {
+    const { outDir } = makeExport(manifest);
+    await expect(verifyExportedDemo(outDir)).rejects.toThrow(/manifest|proofs/i);
+  });
+
+  it('rejects malformed JSON in the manifest', async () => {
+    const { outDir } = makeExport({ kind: 'synthetic-fixture', roots: {}, artifacts: ['file.eml'] });
+    writeFileSync(join(outDir, 'integrity-chain.json'), '{bad json');
+    await expect(verifyExportedDemo(outDir)).rejects.toThrow();
+  });
+
+  it('rejects paths that escape the binder', async () => {
+    const { outDir } = makeExport({ kind: 'synthetic-fixture', roots: {}, artifacts: ['../outside.eml'] });
+    await expect(verifyExportedDemo(outDir)).rejects.toThrow(/invalid artifact path/);
+  });
+
+  it('reports missing artifacts and missing adjacent proofs as failures', async () => {
+    const artifacts = ['missing.eml', 'without-proof.eml'];
+    const { outDir, binder } = makeExport({ kind: 'synthetic-fixture', roots: {}, artifacts });
+    writeFileSync(join(binder, 'without-proof.eml'), 'evidence');
+
+    const result = await verifyExportedDemo(outDir);
+
+    expect(result.files_checked).toEqual(artifacts);
+    expect(result.failed).toEqual([
+      { path: 'missing.eml', reason: 'artifact is missing from the exported binder' },
+      { path: 'without-proof.eml', reason: 'proof is missing at without-proof.eml.ots' },
+    ]);
+  });
+
+  it('reports corrupt proof bytes instead of passing them', async () => {
+    const { outDir, binder } = makeExport({ kind: 'synthetic-fixture', roots: {}, artifacts: ['file.eml'] });
+    writeFileSync(join(binder, 'file.eml'), 'evidence');
+    writeFileSync(join(binder, 'file.eml.ots'), 'not an ots proof');
+
+    const result = await verifyExportedDemo(outDir);
+
+    expect(result.passed).toEqual([]);
+    expect(result.failed[0]).toMatchObject({ path: 'file.eml' });
+    expect(result.failed[0]!.reason).toMatch(/proof could not be read/);
+  });
+
+  it('returns one from cmdVerify and the package binary for malformed exports without live credentials', async () => {
+    const { outDir, binder } = makeExport({ kind: 'synthetic-fixture', roots: {}, artifacts: ['file.eml'] });
+    writeFileSync(join(binder, 'file.eml'), 'evidence');
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await expect(cmdVerify(['--demo', outDir])).resolves.toBe(1);
+
+    expect(() => execFileSync(process.execPath, [binPath, 'verify', '--demo', outDir], {
+      cwd: outDir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { PATH: process.env.PATH ?? '' },
+    })).toThrow();
+  });
+});

@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { verifyExportedDemo } from '../src/commands/verify.js';
 import { createIntegrityFixtures } from '../harness/fixtures/integrity.js';
 import { FixtureTransport } from '../src/integrations/types.js';
@@ -14,8 +14,15 @@ import { stampDigest, upgrade } from '../src/integrity/opentimestamps.js';
 // Report: .gstack/qa-reports/qa-report-localhost-2026-09-14.md
 
 describe('exported demo verification', () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
   it('confirms untouched files and names a file changed after stamping', async () => {
     const outDir = mkdtempSync(join(tmpdir(), 'exhibit-demo-verify-'));
+    tempDirs.push(outDir);
     const binder = join(outDir, 'drive', 'Exhibit binder', '01-awards', 'EX-1-001');
     mkdirSync(binder, { recursive: true });
 
@@ -44,7 +51,11 @@ describe('exported demo verification', () => {
         if (root) roots[String(path.attestation.height)] = root;
       }
     }
-    writeFileSync(join(outDir, 'integrity-chain.json'), `${JSON.stringify({ kind: 'synthetic-fixture', roots }, null, 2)}\n`);
+    writeFileSync(join(outDir, 'integrity-chain.json'), `${JSON.stringify({
+      kind: 'synthetic-fixture',
+      roots,
+      artifacts: files.map((file) => `01-awards/EX-1-001/${file.name}`),
+    }, null, 2)}\n`);
 
     const result = await verifyExportedDemo(outDir);
 
