@@ -39,6 +39,31 @@ function printNotCounted(text: string | null): void {
   if (m) log(`  ${m[1]!.trim().split('\n').join('\n  ')}`);
 }
 
+export function latestEvalSummary(evalPath: string): string {
+  if (!existsSync(evalPath)) return 'run eval';
+  try {
+    const evalReport = JSON.parse(readFileSync(evalPath, 'utf8')) as {
+      backend?: string;
+      passRate?: number;
+      pass?: number;
+      total?: number;
+      attempts?: { passed?: boolean }[];
+    };
+    const backend = evalReport.backend ?? 'unknown';
+    if (evalReport.attempts?.length) {
+      const passed = evalReport.attempts.filter((attempt) => attempt.passed === true).length;
+      return `${passed}/${evalReport.attempts.length} (${((passed / evalReport.attempts.length) * 100).toFixed(0)}%, backend=${backend})`;
+    }
+    if (typeof evalReport.passRate === 'number') return `${(evalReport.passRate * 100).toFixed(0)}% (backend=${backend})`;
+    if (typeof evalReport.pass === 'number' && typeof evalReport.total === 'number' && evalReport.total > 0) {
+      return `${evalReport.pass}/${evalReport.total} (backend=${backend})`;
+    }
+    return 'run eval';
+  } catch {
+    return 'run eval';
+  }
+}
+
 export async function runDemo(outDir: string): Promise<void> {
   // 18:00 UTC = 11:00 America/Los_Angeles, outside the founder's default quiet hours (22:00-08:00
   // Pacific), so the phone-style notifications below are not silently deferred by the clock alone.
@@ -382,22 +407,10 @@ export async function runDemo(outDir: string): Promise<void> {
 
     // ---- Step 7: proof-loop line, computed from real data ----
     const a = affected(graph(), ['decisions-5-5']);
-    let evalLine: string;
     const evalPath = join(process.cwd(), 'reports', 'eval-latest.json');
-    if (existsSync(evalPath)) {
-      try {
-        const evalReport = JSON.parse(readFileSync(evalPath, 'utf8')) as { passRate?: number; pass?: number; total?: number };
-        if (typeof evalReport.passRate === 'number') evalLine = `${(evalReport.passRate * 100).toFixed(0)}%`;
-        else if (typeof evalReport.pass === 'number' && typeof evalReport.total === 'number' && evalReport.total > 0) evalLine = `${evalReport.pass}/${evalReport.total}`;
-        else evalLine = 'run eval';
-      } catch {
-        evalLine = 'run eval';
-      }
-    } else {
-      evalLine = 'run eval';
-    }
+    const evalLine = latestEvalSummary(evalPath);
     log('');
-    log(`Today's rule: accelerator acceptance counts under #1 and #2 (5.5). The dependents check over the prompt graph found ${a.prompts.length} prompt(s) depend on it (${a.prompts.join(', ') || 'none'}), exercised by scenarios ${a.scenarios.join(', ') || 'none'}. Arga scenario pass rate (decisions-5-5 dependents, reports/eval-latest.json): ${evalLine}. This demo run itself found ${allIssues.length} audit issue(s) across both runs.`);
+    log(`Today's rule: accelerator acceptance counts under #1 and #2 (5.5). The dependents check over the prompt graph found ${a.prompts.length} prompt(s) depend on it (${a.prompts.join(', ') || 'none'}), exercised by scenarios ${a.scenarios.join(', ') || 'none'}. Latest scenario pass rate (reports/eval-latest.json): ${evalLine}. This demo run itself found ${allIssues.length} audit issue(s) across both runs.`);
   } finally {
     await env.close();
   }
