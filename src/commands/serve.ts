@@ -4,7 +4,7 @@ import { buildLiveDeps } from '../config.js';
 import { startWebhookServer } from '../server/webhook.js';
 import { createLiveTwilio } from '../apps/live/index.js';
 import type { TextMessage } from '../apps/types.js';
-import { intervalMilliseconds, portNumber } from '../cli-validation.js';
+import { boundedIntervalMilliseconds, intervalMilliseconds, portNumber } from '../cli-validation.js';
 
 // `exhibit serve` (PRD 6.13, 6.14): runs the Twilio inbound webhook and the scheduled watch loop
 // in one process, so an inbound text triggers an immediate run (founder commands feel responsive)
@@ -26,10 +26,17 @@ export function hasCompleteTwilioWebhookEnv(env: NodeJS.ProcessEnv): boolean {
   return Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_SENDER && env.TWILIO_PUBLIC_URL);
 }
 
+export function twilioPollMilliseconds(value: string | undefined): number {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return 15_000;
+  return boundedIntervalMilliseconds(String(Math.max(seconds, 5)), 'TWILIO_POLL_SECONDS', 5);
+}
+
 export async function cmdServe(args: string[]): Promise<void> {
   const { values } = parseArgs({ args, options: { interval: { type: 'string', default: '3600' }, port: { type: 'string' } } });
   const port = portNumber(values.port ?? process.env.PORT ?? '8787');
   const intervalMs = intervalMilliseconds(values.interval!, '--interval');
+  const pollMs = twilioPollMilliseconds(process.env.TWILIO_POLL_SECONDS);
 
   const missing = LIVE_ENV_VARS.filter((v) => !process.env[v]);
   if (missing.length || !process.env.EXHIBIT_PROFILE) {
@@ -89,8 +96,6 @@ export async function cmdServe(args: string[]): Promise<void> {
   const pollApi = webhook ? null : createLiveTwilio(process.env).api;
   // Blank or non-numeric falls back to 15s, and never below 5s: 0 or NaN would make setTimeout
   // fire immediately and hammer the Twilio API.
-  const pollSeconds = Number(process.env.TWILIO_POLL_SECONDS);
-  const pollMs = (Number.isFinite(pollSeconds) && pollSeconds > 0 ? Math.max(pollSeconds, 5) : 15) * 1000;
   let pollTimer: NodeJS.Timeout | null = null;
   if (pollApi) {
     const seen = new Set((await pollApi.listInbound().catch(() => [])).map((m) => m.sid));

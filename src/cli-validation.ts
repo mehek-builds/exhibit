@@ -11,15 +11,19 @@ export function positiveSafeInteger(value: string, flag: string): number {
 }
 
 export function intervalMilliseconds(value: string, flag: string): number {
+  return boundedIntervalMilliseconds(value, flag, MIN_LIVE_INTERVAL_SECONDS);
+}
+
+export function boundedIntervalMilliseconds(value: string, flag: string, minimumSeconds: number): number {
   const seconds = Number(value);
   const milliseconds = seconds * 1000;
   if (
     !Number.isFinite(seconds)
-    || seconds < MIN_LIVE_INTERVAL_SECONDS
+    || seconds < minimumSeconds
     || seconds > MAX_TIMER_SECONDS
     || !Number.isSafeInteger(milliseconds)
   ) {
-    throw new Error(`${flag} must be from ${MIN_LIVE_INTERVAL_SECONDS} to ${MAX_TIMER_SECONDS} seconds, with millisecond precision; received '${value}'.`);
+    throw new Error(`${flag} must be from ${minimumSeconds} to ${MAX_TIMER_SECONDS} seconds, with millisecond precision; received '${value}'.`);
   }
   return milliseconds;
 }
