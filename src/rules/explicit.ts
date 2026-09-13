@@ -94,10 +94,30 @@ const FOUNDER_PRONOUN_RE = /\b(?:you|your|the\s+founder)\b/i;
 
 /**
  * Nouns that attribute pay or a contract to someone other than the founder: a new hire, an
- * employee, an engineer, a candidate, a contractor, a team member, staff, an advisor, an intern,
- * "our first" (hire/engineer/...), or a co-founder (who isn't necessarily the founder herself).
+ * employee, an engineer, a candidate, a contractor, a team member, the sales team, staff, an
+ * advisor, an intern, investors, the board, "our first" (hire/engineer/...), or a co-founder (who
+ * isn't necessarily the founder herself).
  */
-const OTHER_PARTY_RE = /\b(?:new\s+)?hires?\b|\bemployees?\b|\bengineers?\b|\bcandidates?\b|\bcontractors?\b|\bteam\s+members?\b|\bstaff\b|\badvisors?\b|\binterns?\b|\bour\s+first\b|\bco-?founders?\b/i;
+const OTHER_PARTY_RE =
+  /\b(?:new\s+)?hires?\b|\bemployees?\b|\bcandidates?\b|\bcontractors?\b|\bteam\s+members?\b|\bsales\s+team\b|\bstaff\b|\badvisors?\b|\binterns?\b|\binvestors?\b|\bboard\b|\bour\s+first\b|\bco-?founders?\b/i;
+
+/**
+ * "engineer(s)" as a third-party noun -- deliberately lower-case-only (no /i), so a Title-Case job
+ * title naming the founder's own new role ("Staff Engineer" in an offer letter addressed to her,
+ * S16) is never mistaken for a third-party hire the way a lower-case "our first engineer" is.
+ */
+const OTHER_PARTY_ENGINEER_RE = /\bengineers?\b/;
+
+/**
+ * A pay-or-agreement anchor (H1/H2 fix): salary, base pay, pay, wages, compensation, an offer (or
+ * offer letter), an employment/consulting agreement, a contract, an equity/stock/option grant,
+ * shares, "paid", "will receive", "will earn". `payRecipient` only looks at the sentence(s)
+ * carrying one of these -- never an unrelated sentence elsewhere in the same item -- so a
+ * "you"/"your"/founder-name mention in a different sentence can never leak into a pay decision
+ * about someone else's contract or grant.
+ */
+const ANCHOR_RE =
+  /\b(?:salary|base\s+pay|pay|wages?|compensation|offer(?:\s+letter)?|employment\s+agreement|consulting\s+agreement|contract|equity\s+grant|stock\s+grant|option\s+grant|shares?|paid|will\s+receive|will\s+earn)\b/i;
 
 /**
  * True when `sentence` mentions any part of `founderName` (first or last name/alias token, 2+
@@ -114,16 +134,49 @@ function mentionsFounderName(sentence: string, founderName?: string): boolean {
 }
 
 /**
- * Whose pay/contract `sentence` is about (G1/G2, constraint 4): 'founder' when it addresses or
- * names the founder ("you"/"your", "the founder", or her name); 'other' when it attributes the
- * pay or contract to a third party (a new hire, an employee, "our first", a co-founder, ...);
- * 'unknown' otherwise -- no signal either way.
+ * Strips salutations and pleasantries that carry no recipient signal of their own (H2): a leading
+ * "Hi/Hello/Dear/Hey <Name>," greeting, "thank(s) (to) (all of) you", "for you", and a "you, our
+ * <noun>" appositive. Only used to keep those phatic uses of "you" from being mistaken for the
+ * founder being the payee; a genuine "your salary"/"you will be paid" survives untouched.
  */
-export function payRecipient(sentence: string, founderName?: string): PayRecipient {
-  if (FOUNDER_PRONOUN_RE.test(sentence)) return 'founder';
-  if (mentionsFounderName(sentence, founderName)) return 'founder';
-  if (OTHER_PARTY_RE.test(sentence)) return 'other';
-  return 'unknown';
+function stripPleasantries(sentence: string): string {
+  let s = sentence.replace(/^\s*(?:Hi|Hello|Dear|Hey)\s+[A-Z][a-zA-Z'.-]*\s*,\s*/i, '');
+  s = s.replace(/\bthanks?\s+(?:to\s+)?(?:all\s+of\s+)?you\b/gi, ' ');
+  s = s.replace(/\bfor\s+you\b/gi, ' ');
+  s = s.replace(/\byou,\s*our\s+[a-z]+(?:\s+[a-z]+)?\b/gi, ' ');
+  // A job-title descriptor ("the role of Staff Engineer", "the position of Sales Director") names
+  // the role the founder herself is being offered, not a third-party recipient (S16) -- strip it
+  // before testing OTHER_PARTY_RE so a bare "engineer"/"candidate" in a title never trips it.
+  s = s.replace(/\b(?:the\s+)?(?:role|position|title)\s+of\s+[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3}/g, ' ');
+  // Same idea for a ", <Title Case job title>:" appositive right after a name ("Dara Voss, Staff
+  // Engineer:") -- also just naming the role, not a third-party recipient.
+  s = s.replace(/,\s*[A-Z][A-Za-z]*(?:\s+[A-Z][A-Za-z]*){0,3}\s*:/g, ':');
+  return s;
+}
+
+/**
+ * Whose pay/contract/grant `text` is about (G1/G2, constraint 4): only the sentence(s) that carry
+ * a pay-or-agreement anchor (`ANCHOR_RE`) are considered, so an unrelated "you"/"your"/founder-name
+ * mention elsewhere in the item never counts. Within those anchor sentences (pleasantries and
+ * salutations stripped first), a third party always wins: if any anchor sentence attributes the
+ * pay/contract/grant to someone else (a new hire, an employee, the sales team, investors, the
+ * board, ...) the result is 'other', even when the same or another anchor sentence also addresses
+ * or names the founder. Otherwise 'founder' when some anchor sentence addresses or names her
+ * ("you"/"your", "the founder", or her name); 'unknown' when no anchor sentence gives either
+ * signal.
+ */
+export function payRecipient(text: string, founderName?: string): PayRecipient {
+  const all = splitSentences(text);
+  const anchored = all.filter((s) => ANCHOR_RE.test(s));
+  const sentences = anchored.length > 0 ? anchored : all.length > 0 ? all : [text];
+
+  let sawFounder = false;
+  for (const raw of sentences) {
+    const s = stripPleasantries(raw);
+    if (OTHER_PARTY_RE.test(s) || OTHER_PARTY_ENGINEER_RE.test(s)) return 'other';
+    if (FOUNDER_PRONOUN_RE.test(s) || mentionsFounderName(s, founderName)) sawFounder = true;
+  }
+  return sawFounder ? 'founder' : 'unknown';
 }
 
 /**

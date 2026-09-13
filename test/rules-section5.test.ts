@@ -701,3 +701,97 @@ describe('G2 residual: a model quote that names nobody cannot keep #8 when reven
     }
   });
 });
+
+// pr-review-6 H1 (mapper.ts regression) and H2 (payRecipient scoping). One table drives:
+//   - every pr-review-6 probe input (H1 and H2)
+//   - every earlier G1/G2 input from scratchpad/review-pr5/pay5.mts
+//   - the verbatim S3/S4/S16 corpus texts from harness/corpus.ts (must still qualify)
+//   - the extra cases named in the fix brief
+//
+// `mapperOutcome` reproduces src/pipeline/mapper.ts's explicit-rule path exactly (H1: explicit
+// mappings are returned as-is, never run through enforceInvariants).
+describe('pr-review-6 H1/H2: explicit-rule mapping through the mapper.ts path (table-driven)', () => {
+  function mapperOutcome(text: string, title = 'Update') {
+    const it_ = redacted({ app: 'gmail', id: 'm-h', title, text });
+    const explicit = applyExplicitRules(it_, cls({ kind: 'remuneration' }), PROFILE);
+    // Mirrors mapper.ts: explicit mappings bypass enforceInvariants entirely (H1 fix).
+    return explicit;
+  }
+
+  const QUALIFYING: Array<[string, string]> = [
+    // H1: founder's own agreement next to revenue must qualify (the regression).
+    ['H1: consulting agreement + revenue', 'Dear Dara, your consulting agreement with Acme begins on May 1. Acme revenue is $10M.'],
+    ['H1: employment agreement + ARR', 'Dear Dara, attached is your employment agreement; your start date is January 4, 2027. Orbit Labs ARR is $40M.'],
+    ['H1: name-form employment agreement + revenue', 'Dara Voss employment agreement: start date January 4, 2027. Orbit Labs revenue $40M.'],
+    ['H1 control: same letter, no revenue sentence', 'Dear Dara, your consulting agreement with Acme begins on May 1.'],
+    // S3/S4/S16 verbatim corpus texts
+    ['S3 SAFE (verbatim)', 'Hi Dara,\n\nCongratulations on closing your round. The SAFE (simple agreement for future equity) for Loomwork, Inc. has closed with $750,000 from 6 investors at a $9M post-money valuation cap.\n\nView the closing documents in your dashboard.\n\nSafeHub'],
+    ['S4 equity (verbatim)', 'Dara Voss purchased 8,000,000 shares of common stock of Loomwork, Inc. under the Founder Stock Purchase Agreement dated October 1, 2025. The shares vest over four years.'],
+    ['S16 offer (verbatim)', 'Dear Dara,\n\nWe are pleased to extend this offer letter for the role of Staff Engineer at Orbit Labs. You will be paid $310,000 base salary starting on January 4, 2027.\n\nOrbit Labs People Team'],
+  ];
+
+  for (const [label, text] of QUALIFYING) {
+    it(`qualifies #8: ${label}`, () => {
+      const m = mapperOutcome(text);
+      expect(m, text).not.toBeNull();
+      expect(m!.status, text).toBe('qualifying');
+      expect(m!.criteria, text).toContain(8);
+    });
+  }
+
+  const NEVER_QUALIFYING: Array<[string, string]> = [
+    // H2: third party wins over an incidental "you"/founder-name mention anywhere in the item.
+    ['H2: thanks to you + sales-team grant + revenue', 'Thanks to all of you. Board approved the equity grant plan for the sales team. Revenue $5M.'],
+    ['H2: for you our investors + option pool + ARR', 'Q3 update for you, our investors: ARR $3M. We refreshed the option grant pool for new employees.'],
+    ['H2: Hi Dara + first hire employment agreement', 'Hi Dara, our first hire signed an employment agreement; her start date is October 1.'],
+    ['other: your first hire\'s salary', "Your first hire's salary is $150,000."],
+    ['other: you signed with our first engineer', 'You signed an agreement with our first engineer.'],
+    // earlier G1 inputs from scratchpad/review-pr5/pay5.mts (must stay fixed, not regress)
+    ['G1: employment agreement with named hire', 'We signed an employment agreement with our first hire; her start date is October 1. ARR hit $2M.'],
+    ['G1: consulting agreement with vendor', 'Investor update: our consulting agreement with Acme begins on May 1. MRR is $180k.'],
+    ['G1: option grant pool for employees', 'Q3 update: ARR $3M. We refreshed the option grant pool for new employees.'],
+    ['G1: equity grant plan for sales team', 'Board approved the equity grant plan for the sales team. Revenue $5M.'],
+  ];
+
+  for (const [label, text] of NEVER_QUALIFYING) {
+    it(`never qualifies #8: ${label}`, () => {
+      const m = mapperOutcome(text);
+      if (m) {
+        expect(m.status === 'qualifying' && m.criteria.includes(8), text).toBe(false);
+      }
+    });
+  }
+
+  // G2 model-path inputs from pay5.mts: a strong-looking quote naming nobody but the founder must
+  // still downgrade to needs_attorney when revenue is present and the quote/host names a third party.
+  const MODEL_NEVER_QUALIFYING: Array<[string, string, string]> = [
+    ['model: hire salary + ARR', 'We hired our first engineer at a $150,000 salary.\nARR is now $3M.', 'We hired our first engineer at a $150,000 salary.'],
+    ['model: first hire salary quote', "Your first hire's salary is $150,000.\nARR is now $3M.", "Your first hire's salary is $150,000."],
+    ['model: you approved for our first engineer', 'You approved a $150,000 salary for our first engineer.\nARR is now $3M.', 'You approved a $150,000 salary for our first engineer.'],
+  ];
+  for (const [label, text, quote] of MODEL_NEVER_QUALIFYING) {
+    it(`model path never qualifies #8: ${label}`, () => {
+      const it_ = redacted({ app: 'gmail', id: `m-h-model-${label.length}`, title: 'Update', text });
+      const out = enforceInvariants(mapping([8], 'qualifying', 'M-model', 'model', quote, { decided_by: 'model' }), it_, PROFILE);
+      expect(out.status === 'qualifying' && out.criteria.includes(8), text).toBe(false);
+    });
+  }
+
+  // No explicit rule fires on bare "salary" text (no offer letter/employment agreement/equity/
+  // funding vocabulary) -- these are strong personal pay via the model path, keeping #8 qualifying
+  // through enforceInvariants because the quote itself is the founder's own pay (strongPaySentence
+  // + payRecipient === 'founder').
+  const MODEL_QUALIFYING: Array<[string, string]> = [
+    ['strong: your base salary', 'Your base salary will be $190,000.'],
+    ['strong: named founder salary', 'Dara Voss will receive a salary of $180,000.'],
+  ];
+  for (const [label, text] of MODEL_QUALIFYING) {
+    it(`model path qualifies #8: ${label}`, () => {
+      expect(applyExplicitRules(redacted({ app: 'gmail', id: `m-h-mq-${label.length}`, title: 'Update', text }), cls({ kind: 'remuneration' }), PROFILE), text).toBeNull();
+      const it_ = redacted({ app: 'gmail', id: `m-h-mq2-${label.length}`, title: 'Update', text });
+      const out = enforceInvariants(mapping([8], 'qualifying', 'M-model', 'model', text, { decided_by: 'model' }), it_, PROFILE);
+      expect(out.status, text).toBe('qualifying');
+      expect(out.criteria, text).toContain(8);
+    });
+  }
+});

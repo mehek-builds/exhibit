@@ -75,13 +75,14 @@ export async function classifyAndMap(item: SourceItem, redacted: RedactedItem, d
 
   const explicit = applyExplicitRules(redacted, cls, profile, deps.ruleOptions);
   if (explicit) {
-    // G1: explicit #8 mappings pass through the same revenue/recipient backstop a model mapping
-    // does, so a detection mistake in an explicit rule can't silently outrun enforceInvariants
-    // (constraint 4). A no-op for rule families the backstop doesn't touch (funding/equity text
-    // exempts itself from the revenue check by design; those rules gate their own recipient above).
-    const enforced = enforceInvariants(explicit, redacted, profile, deps.ruleOptions);
-    trace.span('map.explicit_rule', { app: item.app, id: item.id }, { rule_id: enforced.rule_id, criteria: enforced.criteria, status: enforced.status });
-    return { cls, mapping: enforced, stage: 'done', hallucinations, modelCalls };
+    // H1: explicit-rule mappings are returned as-is, not run through enforceInvariants. The
+    // T-revenue-not-pay backstop there is tuned for a model's own free-text quote; X-future-pay
+    // and D-equity-comparable already decide their own status and recipient (via `payRecipient`
+    // scoped to the item body) before returning, so re-running the revenue backstop on their
+    // output only drops genuine founder pay next to a revenue figure (e.g. "your consulting
+    // agreement ... begins on May 1. Acme revenue is $10M.") to rejected.
+    trace.span('map.explicit_rule', { app: item.app, id: item.id }, { rule_id: explicit.rule_id, criteria: explicit.criteria, status: explicit.status });
+    return { cls, mapping: explicit, stage: 'done', hallucinations, modelCalls };
   }
 
   let raw;
