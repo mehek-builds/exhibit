@@ -1,6 +1,6 @@
 # Exhibit: system and reliability brief
 
-Batch: batch_1789328765184 | Release: fd6e0df | Brief generated: 2026-09-13T19:46:25.239Z | Eval window: 2026-09-13T19:44:29.131Z to 2026-09-13T19:46:05.184Z
+Batch: batch_1789328967793 | Release: 795c84d | Brief generated: 2026-09-13T19:49:52.709Z | Eval window: 2026-09-13T19:48:51.854Z to 2026-09-13T19:49:27.793Z
 
 ## 1. What it does
 
