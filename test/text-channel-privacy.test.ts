@@ -266,13 +266,16 @@ describe('the injection guard applies identically to both parsers', () => {
   });
 });
 
-describe('read-only/harmless kinds need no keyword grounding (status, next, resume/start, yes)', () => {
+describe('status/next stay ungrounded; yes/start/resume are grounded on intent, not literal keyword', () => {
   const cases: [text: string, kind: string][] = [
     ['where am I?', 'status'],
     ['how am I doing?', 'status'],
     ["I'm back", 'resume'],
     ['status', 'status'],
     ['next', 'next'],
+    ['start', 'start'],
+    ['you can text me again', 'start'],
+    ['yep, do it', 'yes'],
   ];
 
   for (const [text, kind] of cases) {
@@ -329,6 +332,38 @@ describe('read-only/harmless kinds need no keyword grounding (status, next, resu
     vi.resetModules();
   });
 
+  // R2: yes/start/resume must be grounded on what they actually do (yes applies a staged
+  // confirmation, e.g. a bulk figure approval; start/resume undo a STOP/pause), not accepted
+  // whenever the model merely names the kind. A misreading of negated/hesitant text must clarify
+  // instead of applying anything.
+  const misreadCases: [text: string, kind: string][] = [
+    ['no, wait', 'yes'],
+    ['hmm hold on', 'yes'],
+    ['yes but not figure 2 — wait', 'yes'],
+    ['don\'t text me for a while', 'start'],
+    ['don\'t text me for a while', 'resume'],
+    ['stop for now', 'start'],
+    ['stop for now', 'resume'],
+    ['back off', 'start'],
+    ['back off', 'resume'],
+  ];
+
+  for (const [text, kind] of misreadCases) {
+    it(`a model answering ${kind} for "${text}" gets a clarifying question with nothing applied`, async () => {
+      vi.resetModules();
+      vi.doMock('@ai-sdk/anthropic', () => ({
+        createAnthropic: () => () => mockModel(() => textResult({ commands: [{ kind }] })),
+      }));
+      const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+      const parser = new MockedParser('unused-key', graph);
+      const out = await parser.parse(text, { now: NOW, pendingFigureNumbers: [] });
+      expect(out).toHaveLength(1);
+      expect(out[0]!.kind).toBe('unclear');
+      vi.doUnmock('@ai-sdk/anthropic');
+      vi.resetModules();
+    });
+  }
+
   it('"add evidence https://example.com/x" is grounded when the URL appears in the text', async () => {
     vi.resetModules();
     vi.doMock('@ai-sdk/anthropic', () => ({
@@ -339,6 +374,62 @@ describe('read-only/harmless kinds need no keyword grounding (status, next, resu
     const parser = new MockedParser('unused-key', graph);
     const out = await parser.parse('add evidence https://example.com/x', { now: NOW, pendingFigureNumbers: [] });
     expect(out).toEqual([{ kind: 'add_evidence', description: 'https://example.com/x' }]);
+    vi.doUnmock('@ai-sdk/anthropic');
+    vi.resetModules();
+  });
+});
+
+describe('R2 end to end: a misread yes/start/resume is grounded away before applyCommand ever runs', () => {
+  it('a staged "approve all" confirmation is NOT applied when the model returns yes for "no, wait"', async () => {
+    const h = await setup();
+    const fig1 = figureRow({ fig_id: 'FIG-001', exhibit_id: 'EX-3-001' });
+    const fig2 = figureRow({ fig_id: 'FIG-002', exhibit_id: 'EX-3-002' });
+    h.ledger.insertFigure(fig1);
+    h.ledger.insertFigure(fig2);
+    listFiguresText([fig1, fig2], h.ledger);
+    // Stage a pending bulk confirmation, as if the founder had just sent "approve all".
+    h.ledger.set('text_pending_confirm', JSON.stringify({ figureIds: ['FIG-001', 'FIG-002'], createdAt: h.ctx.now.toISOString() }));
+
+    vi.resetModules();
+    vi.doMock('@ai-sdk/anthropic', () => ({
+      createAnthropic: () => () => mockModel(() => textResult({ commands: [{ kind: 'yes' }] })),
+    }));
+    const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+    const parser = new MockedParser('unused-key', graph);
+    const ext = createTextChannel({ parser });
+
+    h.twilio.adminInbound(FOUNDER_PHONE, 'no, wait');
+    await ext.beforeClassify!(h.ctx);
+
+    // constraint 13: figure approval must come from the founder, not a model's misread of "no, wait".
+    expect(h.ledger.get('text_pending_confirm')).not.toBe('');
+    expect(h.ledger.figure('FIG-001')!.status).toBe('pending');
+    expect(h.ledger.figure('FIG-002')!.status).toBe('pending');
+    const [inEvent] = h.ledger.events({ kind: 'text_in' }).slice(-1);
+    expect(inEvent!.detail.action).not.toBe('applied');
+
+    vi.doUnmock('@ai-sdk/anthropic');
+    vi.resetModules();
+  });
+
+  it('a STOP is NOT undone when the model returns start for "don\'t text me for a while"', async () => {
+    const h = await setup();
+    h.ledger.set('texts_stopped', '1');
+
+    vi.resetModules();
+    vi.doMock('@ai-sdk/anthropic', () => ({
+      createAnthropic: () => () => mockModel(() => textResult({ commands: [{ kind: 'start' }] })),
+    }));
+    const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+    const parser = new MockedParser('unused-key', graph);
+    const ext = createTextChannel({ parser });
+
+    h.twilio.adminInbound(FOUNDER_PHONE, "don't text me for a while");
+    await ext.beforeClassify!(h.ctx);
+
+    // constraint 15: never guess on unclear text -- the STOP the founder set must stay in effect.
+    expect(h.ledger.get('texts_stopped')).toBe('1');
+
     vi.doUnmock('@ai-sdk/anthropic');
     vi.resetModules();
   });

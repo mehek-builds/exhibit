@@ -284,6 +284,62 @@ describe('review queue: row identity is a figure version, not row order (constra
     await env.close();
   });
 
+  it('going stale immediately clears the figure from context-notes.md, even before any new decision (R4)', async () => {
+    const { env, reviewDeps, folders } = await staleApprovedSetup('FIG-307', 'EX-3-307');
+    // Before requeue, the notes file already carries the approved figure (staleApprovedSetup ran the
+    // approve flow -- via queueFigures/adminSetSheetCell/updateFigure -- but never through
+    // applyDecisions, so write it once via a direct approve pass to establish the "was current" state).
+    await applyDecisions(reviewDeps); // resyncs notes: stale already happened in staleApprovedSetup, so nothing approved yet
+    const notes = await env.deps.apps.drive.findChild(folders.folder, 'context-notes.md');
+    if (notes) {
+      const text = Buffer.from(await env.deps.apps.drive.readFile(notes.id)).toString('utf8');
+      expect(text).not.toContain('FIG-307');
+    }
+    expect(env.ledger.figure('FIG-307')!.status).toBe('pending');
+    await env.close();
+  });
+
+  it('denying the re-queued (v2) figure leaves it absent from context-notes.md', async () => {
+    const { env, reviewDeps, folders, sheetId } = await staleApprovedSetup('FIG-308', 'EX-3-308');
+    await applyDecisions(reviewDeps);
+    await queueFigures([env.ledger.figure('FIG-308')!], reviewDeps);
+    env.twins.adminSetSheetCell(sheetId, { column: 'ID', equals: 'FIG-308 (v2)' }, 'Decision', 'Deny');
+    env.twins.adminSetSheetCell(sheetId, { column: 'ID', equals: 'FIG-308 (v2)' }, 'Reason', 'no longer accurate');
+
+    const summary = await applyDecisions(reviewDeps);
+    expect(summary.denied).toContain('FIG-308');
+    expect(env.ledger.figure('FIG-308')!.status).toBe('denied');
+    const notes = await env.deps.apps.drive.findChild(folders.folder, 'context-notes.md');
+    if (notes) {
+      const text = Buffer.from(await env.deps.apps.drive.readFile(notes.id)).toString('utf8');
+      expect(text).not.toContain('FIG-308');
+    }
+    await env.close();
+  });
+
+  it('re-approving the re-queued (v2) figure writes it into context-notes.md exactly once', async () => {
+    const { env, reviewDeps, folders, sheetId } = await staleApprovedSetup('FIG-309', 'EX-3-309');
+    await applyDecisions(reviewDeps);
+    await queueFigures([env.ledger.figure('FIG-309')!], reviewDeps);
+    env.twins.adminSetSheetCell(sheetId, { column: 'ID', equals: 'FIG-309 (v2)' }, 'Decision', 'Approve');
+    env.twins.adminSetSheetCell(sheetId, { column: 'ID', equals: 'FIG-309 (v2)' }, 'Reason', 'confirmed current');
+
+    const summary = await applyDecisions(reviewDeps);
+    expect(summary.approved).toContain('FIG-309');
+    const notes = await env.deps.apps.drive.findChild(folders.folder, 'context-notes.md');
+    expect(notes).not.toBeNull();
+    const text = Buffer.from(await env.deps.apps.drive.readFile(notes!.id)).toString('utf8');
+    const occurrences = text.split('FIG-309:').length - 1;
+    expect(occurrences).toBe(1);
+
+    // A further resync (e.g. another applyDecisions call with nothing new) must not duplicate it.
+    await applyDecisions(reviewDeps);
+    const text2 = Buffer.from(await env.deps.apps.drive.readFile(notes!.id)).toString('utf8');
+    expect(text2.split('FIG-309:').length - 1).toBe(1);
+
+    await env.close();
+  });
+
   it('legacy unversioned rows (no "(vN)" suffix) still work as v1', async () => {
     const { env, binder, reviewDeps } = await setup();
     const exId = 'EX-3-306';

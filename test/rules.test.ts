@@ -180,10 +180,14 @@ describe('revenue is not conflated with personal pay', () => {
     expect(m!.rule_id).toBe('T-revenue-not-pay');
   });
 
-  it('does not reject revenue language when salary/equity terms are also present (ambiguous, left to other rules)', () => {
+  it('a bare salary mention with no amount is ambiguous, not a clean pass or reject (three-tier redesign)', () => {
+    // CHANGED: under the new payEvidence three-tier design, a bare "salary" word with no amount
+    // nearby is ambiguous vocabulary, not strong pay. T-revenue-not-pay now fires as needs_attorney
+    // (rule_id stays 'T-revenue-not-pay') instead of not firing at all.
     const it_ = redacted({ app: 'gmail', id: 'm-rev2', title: 'Comp update', text: 'Your salary is set based on our current ARR figures.' });
     const m = applyExplicitRules(it_, cls({ kind: 'remuneration' }), PROFILE);
-    expect(m?.rule_id).not.toBe('T-revenue-not-pay');
+    expect(m!.rule_id).toBe('T-revenue-not-pay');
+    expect(m!.status).toBe('needs_attorney');
   });
 });
 

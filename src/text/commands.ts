@@ -118,7 +118,7 @@ function unclear(question: string): ParsedCommand {
   return { kind: 'unclear', question };
 }
 
-function parseSegment(segment: string, ctx: ParseContext): ParsedCommand {
+function parseSegment(segment: string, ctx: ParseContext, fullText: string): ParsedCommand {
   const lower = segment.toLowerCase();
 
   if (/^approve/i.test(segment)) {
@@ -144,7 +144,10 @@ function parseSegment(segment: string, ctx: ParseContext): ParsedCommand {
     return { kind: 'pause', until };
   }
 
-  if (/^resume/i.test(segment)) return { kind: 'resume' };
+  if (/^resume/i.test(segment)) {
+    if (!START_INTENT_RE.test(fullText) || STOP_INTENT_RE.test(fullText)) return unclear(`I wasn't able to confirm everything in "${fullText.trim()}". Could you rephrase it as separate short commands (e.g. "approve 1", "deny 2 <reason>", "pause until <date>")?`);
+    return { kind: 'resume' };
+  }
   if (/^add[ _]evidence/i.test(segment)) {
     const description = segment.replace(/^add[ _]evidence\b[:,-]?\s*/i, '').trim();
     if (!description) return unclear('What evidence should I look for?');
@@ -153,8 +156,14 @@ function parseSegment(segment: string, ctx: ParseContext): ParsedCommand {
   if (/^next\b/.test(lower)) return { kind: 'next' };
   if (/^status\b/.test(lower)) return { kind: 'status' };
   if (/^stop\b/.test(lower)) return { kind: 'stop' };
-  if (/^start\b/.test(lower)) return { kind: 'start' };
-  if (/^yes\b/.test(lower)) return { kind: 'yes' };
+  if (/^start\b/.test(lower)) {
+    if (!START_INTENT_RE.test(fullText) || STOP_INTENT_RE.test(fullText)) return unclear(`I wasn't able to confirm everything in "${fullText.trim()}". Could you rephrase it as separate short commands (e.g. "approve 1", "deny 2 <reason>", "pause until <date>")?`);
+    return { kind: 'start' };
+  }
+  if (/^yes\b/.test(lower)) {
+    if (!AFFIRM_RE.test(fullText) || NEGATION_RE.test(fullText)) return unclear(`I wasn't able to confirm everything in "${fullText.trim()}". Could you rephrase it as separate short commands (e.g. "approve 1", "deny 2 <reason>", "pause until <date>")?`);
+    return { kind: 'yes' };
+  }
   return unclear(`I didn't understand "${segment}".`);
 }
 
@@ -169,7 +178,7 @@ export class HeuristicCommandParser implements CommandParser {
     if (isInjectionShaped(trimmed)) return [];
 
     const segments = splitSegments(trimmed);
-    if (segments.length) return segments.map((s) => parseSegment(s, ctx));
+    if (segments.length) return segments.map((s) => parseSegment(s, ctx, trimmed));
 
     if (ADD_EVIDENCE_RE.test(trimmed)) return [{ kind: 'add_evidence', description: trimmed }];
 
@@ -258,13 +267,12 @@ export class AnthropicCommandParser implements CommandParser {
   }
 }
 
-// Only kinds that change state or act irreversibly need keyword grounding: an intent word/synonym
-// present in the text. Read-only/harmless kinds (status, next, resume, start, yes) are left out of
-// this map entirely -- they either read state or, for resume/start, only re-enable something the
-// founder already set up (see channel.ts), and "yes" only applies a confirmation already staged
-// from the ledger, never new data invented by the model. Those kinds are legitimate free-form model
-// interpretations ("where am I?" -> status, "how am I doing?" -> status, "I'm back" -> resume) and
-// must not be forced into keyword matching.
+// `yes`, `start` and `resume` are state-changing/irreversible in effect (yes applies a staged
+// confirmation -- e.g. a bulk figure approval, constraint 13: figure approval must come from the
+// founder; start/resume undo a STOP/pause, constraint 15: never guess on unclear text) and so are
+// grounded like the other kinds below, but on intent rather than a literal keyword: the text must
+// express the right sentiment and must NOT contain a conflicting negation/hesitation or stop intent.
+// Only status and next stay ungrounded -- they are read-only and cannot misapply anything.
 const KIND_SYNONYM_RE: Partial<Record<ParsedCommand['kind'], RegExp>> = {
   approve: /\bapprove/i,
   deny: /\bdeny/i,
@@ -272,6 +280,12 @@ const KIND_SYNONYM_RE: Partial<Record<ParsedCommand['kind'], RegExp>> = {
   add_evidence: /\b(add[ _]evidence|i\s+(judged|spoke|presented|published|wrote|reviewed|interviewed|won|received|got|gave|attended|was)\b)/i,
   stop: /\bstop\b/i,
 };
+
+const AFFIRM_RE = /\b(yes|y|yep|yeah|confirm(?:ed)?|ok(?:ay)?|sure|go\s+ahead|do\s+it)\b/i;
+const NEGATION_RE = /\b(no|not|don'?t|wait|hold|stop|cancel|never)\b/i;
+
+const START_INTENT_RE = /\b(start|resume|unpause)\b|i'?m\s+back|turn\s+texts?\s+back\s+on|you\s+can\s+text\s+me\s+again/i;
+const STOP_INTENT_RE = /\bstop\b|\bdon'?t\b|no\s+more|\bpause\b|\bquiet\b|leave\s+me\s+alone|for\s+a\s+while|back\s+off/i;
 
 /** State-changing/irreversible claim in `description` (a URL or a distinctive word/phrase) must be
  * traceable back to the source text -- the model may summarize but not invent evidence. */
@@ -288,10 +302,13 @@ function descriptionGrounded(description: string, text: string): boolean {
  * pause's date, add_evidence's claim) is actually derivable from the text. Read-only/harmless kinds
  * (status, next, resume, start, yes) carry no grounding requirement -- see the note on
  * KIND_SYNONYM_RE above. */
-const GROUNDED_KINDS = new Set<ParsedCommand['kind']>(['approve', 'deny', 'pause', 'stop', 'add_evidence']);
+const GROUNDED_KINDS = new Set<ParsedCommand['kind']>(['approve', 'deny', 'pause', 'stop', 'add_evidence', 'yes', 'start', 'resume']);
 
 function isGrounded(cmd: ParsedCommand, text: string, now: Date): boolean {
   if (!GROUNDED_KINDS.has(cmd.kind)) return true;
+
+  if (cmd.kind === 'yes') return AFFIRM_RE.test(text) && !NEGATION_RE.test(text);
+  if (cmd.kind === 'start' || cmd.kind === 'resume') return START_INTENT_RE.test(text) && !STOP_INTENT_RE.test(text);
 
   const re = KIND_SYNONYM_RE[cmd.kind];
   if (re && !re.test(text)) return false;

@@ -190,4 +190,58 @@ describe('redactText: A-number 7-9 digit range', () => {
       expect(redactText(s).text, s).toBe(s);
     }
   });
+
+  // R3 (PR review): A + space + contiguous 7-9 digits is an unambiguous shape and must always be
+  // redacted, no matter what label word precedes it -- under-redaction is the worse error.
+
+  it('redacts "Exhibit A 012345678" (R3: contiguous digits, unambiguous shape)', () => {
+    const { text, redactions } = redactText('See Exhibit A 012345678 for details.');
+    expect(text).toContain('[REDACTED:a_number]');
+    expect(text).not.toContain('012345678');
+    expect(redactions).toEqual([{ type: 'a_number', count: 1 }]);
+  });
+
+  it('redacts "Section A 123456789" (R3: contiguous digits, unambiguous shape)', () => {
+    const { text, redactions } = redactText('Refer to Section A 123456789 above.');
+    expect(text).toContain('[REDACTED:a_number]');
+    expect(text).not.toContain('123456789');
+    expect(redactions).toEqual([{ type: 'a_number', count: 1 }]);
+  });
+
+  // R5 (PR review): dates and phone numbers never match an A-number shape (3-3-3, 2-3-3, 1-3-3, or
+  // contiguous 7-9 digits), so they must never be redacted even when glued to "A" with a dash.
+
+  it('does not redact "Exhibit A-2026-09-13" (R5: a date, 4-2-2 shape)', () => {
+    const prose = 'See Exhibit A-2026-09-13 for the revision.';
+    const { text, redactions } = redactText(prose);
+    expect(text).toBe(prose);
+    expect(redactions).toEqual([]);
+  });
+
+  it('does not redact "Plan A-555-1234" (R5: a phone number, 3-4 shape)', () => {
+    const prose = 'Plan A-555-1234 is the backup contact line.';
+    const { text, redactions } = redactText(prose);
+    expect(text).toBe(prose);
+    expect(redactions).toEqual([]);
+  });
+
+  it('does not redact "Series A 12 345 678" (ambiguous 2-3-3 shape after a funding label)', () => {
+    const prose = 'Series A 12 345 678 was the internal deal code.';
+    const { text, redactions } = redactText(prose);
+    expect(text).toBe(prose);
+    expect(redactions).toEqual([]);
+  });
+
+  it('redacts "A 12 345 678" alone (ambiguous 2-3-3 shape with no label word)', () => {
+    const { text, redactions } = redactText('Filed as A 12 345 678 in the registry.');
+    expect(text).toContain('[REDACTED:a_number]');
+    expect(redactions).toEqual([{ type: 'a_number', count: 1 }]);
+  });
+
+  it('redacts "Exhibit A-12-345-678" (dash glue makes a 2-3-3 shape unambiguous)', () => {
+    const { text, redactions } = redactText('See Exhibit A-12-345-678 for details.');
+    expect(text).toContain('[REDACTED:a_number]');
+    expect(text).not.toMatch(/12.345.678/);
+    expect(redactions).toEqual([{ type: 'a_number', count: 1 }]);
+  });
 });
