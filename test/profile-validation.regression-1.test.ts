@@ -63,4 +63,15 @@ describe('setup profile contract', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toMatch(/valid IANA time zone/);
   });
+
+  it.each([
+    ['targetFilingDate', 'not-a-date'],
+    ['targetFilingDate', '2027-02-29'],
+    ['scanSince', 'also-bad'],
+    ['scanSince', '2025-02-30'],
+  ])('rejects invalid %s value %s', (field, value) => {
+    const result = validateProfile({ ...profile, [field]: value });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/valid YYYY-MM-DD date/);
+  });
 });
