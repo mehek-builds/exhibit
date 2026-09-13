@@ -81,6 +81,12 @@ function eventCount(m: MatrixResult, kind: string): number {
   return m.attempts.reduce((n, a) => n + (a.metrics?.eventCounts[kind] ?? 0), 0);
 }
 
+function eventResultCount(value: unknown): number {
+  if (Array.isArray(value)) return value.length;
+  const numeric = Number(value ?? 0);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
 function statFor(m: MatrixResult, id: string): ScenarioStats | undefined {
   return m.stats.find((s) => s.scenarioId === id);
 }
@@ -124,7 +130,7 @@ function systemParagraph(m: MatrixResult): string {
     '| Plumbing (the founder\'s own data and the binder) | Gmail, Google Calendar, Google Drive, Google Sheets, Google Docs, GitHub | Arga twins |',
     '| Discover evidence she never saw | GDELT (world news), Podcast Index, Hacker News, Product Hunt, OpenReview, ORCID, Hugging Face Hub, SEC EDGAR (Form D), USPTO PatentSearch | Recorded responses replayed with injected edge cases (S21); a discovered item must name the founder and a second identifier |',
     '| Verify the numbers from official data | OpenAlex, Crossref, Semantic Scholar (journals and citations), BLS and O*NET (the 90th-percentile wage for her occupation code), ecosyste.ms (package adoption) | Recorded responses; every figure still needs two sources and her approval |',
-    '| Make the binder tamper-evident | Internet Archive Save Page Now (dated third-party copies of public sources), OpenTimestamps (each exhibit\'s hash anchored in Bitcoin) | Verified by `exhibit verify` (S22), which anyone can re-run |',
+    '| Make the binder tamper-evident | Internet Archive Save Page Now (dated third-party copies of public sources), OpenTimestamps (each stampable artifact hash is submitted to timestamp calendars; Bitcoin anchoring exists only after confirmation) | Verified by `exhibit verify` (S22), which anyone can re-run |',
     '| Act | Dropbox Sign (letters out for signature, test mode), DeepL API Free (draft translations, flagged for a certified translator), Twilio free trial (the message thread) | State read back from each service (S23, S24); Twilio twin (S20) |',
     '| After filing | USCIS Case Status API (Torch) | Sandbox only; production access pending USCIS approval |',
   ].join('\n');
@@ -502,39 +508,68 @@ function corroborationSection(m: MatrixResult): string {
 // ---------------- section 10b: integrity and integrations ----------------
 
 function integrityAndIntegrationsSection(m: MatrixResult): string {
-  const timestamps = allEvents(m, 'timestamp');
-  const confirmed = timestamps.filter((e) => e.detail.status === 'confirmed').length;
+  let timestamped = 0;
+  let confirmed = 0;
+  let pendingProofs = 0;
+  for (const attempt of m.attempts) {
+    const latestByFile = new Map<string, string>();
+    for (const event of attempt.metrics?.events ?? []) {
+      if (event.kind === 'timestamp' && typeof event.detail.file_id === 'string') {
+        latestByFile.set(event.detail.file_id, String(event.detail.status ?? ''));
+      }
+    }
+    timestamped += latestByFile.size;
+    confirmed += [...latestByFile.values()].filter((status) => status === 'confirmed').length;
+    pendingProofs += [...latestByFile.values()].filter((status) => status === 'pending').length;
+  }
   const verifyEvents = allEvents(m, 'verify');
-  const verifyPass = verifyEvents.reduce((n, e) => n + Number(e.detail.passed ?? 0), 0);
-  const verifyCaught = verifyEvents.reduce((n, e) => n + Number(e.detail.failed ?? 0), 0);
+  const verifyPass = verifyEvents.reduce((n, e) => n + eventResultCount(e.detail.passed), 0);
+  const verifyCaught = verifyEvents.reduce((n, e) => n + eventResultCount(e.detail.failed), 0);
   const archived = allEvents(m, 'archive').filter((e) => e.detail.ok).length;
   const discovery = allEvents(m, 'discovery');
-  const bySource = new Map<string, { candidates: number; exhibits: number; rejected: number; merged: number }>();
+  const bySource = new Map<string, { observed: number; accepted: number; rejected: number; duplicates: number }>();
   for (const e of discovery) {
     const src = String(e.detail.source ?? 'unknown');
-    const row = bySource.get(src) ?? { candidates: 0, exhibits: 0, rejected: 0, merged: 0 };
-    row.candidates += 1;
-    if (e.detail.outcome === 'exhibit') row.exhibits += 1;
-    else if (e.detail.outcome === 'rejected_second_identifier') row.rejected += 1;
-    else if (e.detail.outcome === 'merged') row.merged += 1;
+    const row = bySource.get(src) ?? { observed: 0, accepted: 0, rejected: 0, duplicates: 0 };
+    row.observed += 1;
+    if (e.detail.outcome === 'candidate') row.accepted += 1;
+    else if (e.detail.outcome === 'second_identifier_reject') row.rejected += 1;
+    else if (e.detail.outcome === 'duplicate') row.duplicates += 1;
     bySource.set(src, row);
   }
   const discoveryTable = bySource.size
-    ? ['| Source | Candidates | Became exhibits | Rejected by the second-identifier rule | Merged with an inbox item |', '|---|---|---|---|---|', ...[...bySource.entries()].map(([src, r]) => `| ${src} | ${r.candidates} | ${r.exhibits} | ${r.rejected} | ${r.merged} |`)].join('\n')
+    ? ['| Source | Items observed | Accepted as candidates | Rejected by the second-identifier rule | Duplicate URLs |', '|---|---|---|---|---|', ...[...bySource.entries()].map(([src, r]) => `| ${src} | ${r.observed} | ${r.accepted} | ${r.rejected} | ${r.duplicates} |`)].join('\n')
     : 'No discovery events were recorded in this batch (S21 not run, or no candidates found).';
-  const dsRequests = allEvents(m, 'signature');
-  const dsCreated = dsRequests.length;
-  const dsSigned = dsRequests.filter((e) => e.detail.status === 'signed').length;
-  const dsDeclined = dsRequests.filter((e) => e.detail.status === 'declined').length;
-  const dsUnapproved = dsRequests.filter((e) => e.detail.status === 'signed' || e.detail.status === 'declined').length && dsRequests.filter((e) => !e.detail.test_mode).length;
-  const artifactsFiled = m.attempts.reduce((n, a) => n + a.runs.reduce((k, r) => k + r.filed.length, 0), 0);
+  let dsCreated = 0;
+  let dsSigned = 0;
+  let dsDeclined = 0;
+  let dsRefused = 0;
+  let dsUnapproved = 0;
+  for (const attempt of m.attempts) {
+    const signatureEvents = (attempt.metrics?.events ?? []).filter((event) => event.kind === 'signature');
+    const createdEvents = signatureEvents.filter((event) => event.detail.status === 'created' && typeof event.detail.request_id === 'string');
+    dsCreated += createdEvents.length;
+    dsUnapproved += createdEvents.filter((event) => event.detail.recommender_confirmed !== true || event.detail.founder_approved !== true).length;
+    const finalByRequest = new Map<string, string>();
+    for (const event of signatureEvents) {
+      if (typeof event.detail.request_id === 'string') finalByRequest.set(event.detail.request_id, String(event.detail.status ?? ''));
+    }
+    dsSigned += [...finalByRequest.values()].filter((status) => status === 'signed').length;
+    dsDeclined += [...finalByRequest.values()].filter((status) => status === 'declined').length;
+    dsRefused += new Set(
+      signatureEvents
+        .filter((event) => event.detail.request_id == null && event.detail.status === 'declined')
+        .map((event) => String(event.detail.letter_id ?? 'unknown')),
+    ).size;
+  }
+  const confirmationSource = m.backend === 'memory' ? 'synthetic fixture headers' : 'the configured block-header source';
   return [
-    'Tamper-evidence. Every filed artifact\'s SHA-256 is stamped with OpenTimestamps, and every approved public source page is archived with the Internet Archive. `exhibit verify` re-checks the binder against both.',
+    'Tamper-evidence. Every stampable filed artifact\'s SHA-256 is stamped with OpenTimestamps, and every approved public source page is archived with the Internet Archive. `exhibit verify` re-checks filed artifact bytes against their timestamp proofs; archive results are recorded separately.',
     '',
     '| Measure | Result |',
     '|---|---|',
-    `| Artifacts filed and stamped | ${timestamps.length} of ${artifactsFiled} |`,
-    `| Timestamp proofs confirmed in Bitcoin (the rest pending, upgraded nightly) | ${confirmed} |`,
+    `| Artifacts with timestamp records | ${timestamped} |`,
+    `| Latest proof status: confirmed by ${confirmationSource} / pending | ${confirmed} / ${pendingProofs} |`,
     `| \`exhibit verify\`: untouched files passing / altered file caught | ${verifyPass} / ${verifyCaught} |`,
     `| Approved public sources archived | ${archived} of ${eventCount(m, 'archive')} |`,
     '',
@@ -544,7 +579,7 @@ function integrityAndIntegrationsSection(m: MatrixResult): string {
     '',
     `Numbers from official data. Figures drawn from structured APIs versus web pages: not tracked separately in this batch's events; see section 10.`,
     '',
-    `Letters. Dropbox Sign requests (test mode): ${dsCreated} created, ${dsSigned} signed, ${dsDeclined} declined, and ${dsUnapproved} created without both approvals (target 0, read back from the Dropbox Sign event log).`,
+    `Letters. Dropbox Sign requests (test mode): ${dsCreated} created, ${dsSigned} signed, ${dsDeclined} declined, ${dsRefused} refused before sending by the day-mode safety gate, and ${dsUnapproved} created without both approvals (target 0, read back from the Dropbox Sign event log).`,
   ].join('\n');
 }
 
@@ -595,8 +630,7 @@ function knownLimits(m: MatrixResult): string {
   ].join('\n');
 }
 
-/** Section 12(c): docs/SECURITY-REVIEW.md's own findings, restated plainly. Every item in that
- * review carries a "Patch:" (a fix to apply), never a "fixed" marker, so all four are still open. */
+/** Section 12(c): docs/SECURITY-REVIEW.md's own per-finding status, restated plainly. */
 function securityReviewLimits(): string[] {
   const path = join(process.cwd(), 'docs', 'SECURITY-REVIEW.md');
   if (!existsSync(path)) return ['- Security review: docs/SECURITY-REVIEW.md does not exist in this repo — not run.'];
@@ -607,9 +641,16 @@ function securityReviewLimits(): string[] {
     { id: 'M2', label: 'the Twilio webhook has no request body size cap, ahead of its signature check' },
     { id: 'L1', label: 'inbound/outbound SMS body is stored unredacted in the ledger' },
   ];
-  const fixed = /\bFIXED\b/.test(text) || /marked fixed/i.test(text);
-  const status = findings.map((f) => `${f.id} (${f.label})`).join('; ');
-  return [`- Security review residual items (docs/SECURITY-REVIEW.md): ${fixed ? `fixed: ${status}` : `still open, no patch applied yet: ${status}`}.`];
+  const open = findings.filter((finding) => {
+    const escapedId = finding.id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const status = new RegExp(`\\*\\*${escapedId}\\b[\\s\\S]*?\\*Status:\\s*([^*]+)\\*`, 'i').exec(text)?.[1]?.trim();
+    return !status || !/^fixed\b/i.test(status);
+  });
+  if (open.length === 0) {
+    return ['- Security review (docs/SECURITY-REVIEW.md): H1, M1, M2 and L1 are marked fixed; no open findings remain in that review.'];
+  }
+  const status = open.map((finding) => `${finding.id} (${finding.label})`).join('; ');
+  return [`- Security review open findings (docs/SECURITY-REVIEW.md): ${status}.`];
 }
 
 // ---------------- section 13: reproduce ----------------
@@ -618,11 +659,19 @@ function reproduceSection(): string {
   const verifyExists = existsSync(join(process.cwd(), 'src', 'commands', 'verify.ts'));
   const lines = [
     'git clone https://github.com/mehek-builds/exhibit && cd exhibit && npm ci',
-    'npx tsx src/cli.ts eval --attempts 3     # runs the scenario matrix and writes reports/eval-latest.json',
-    'npx tsx src/cli.ts brief                 # regenerates this brief from reports/eval-latest.json',
+    'npm run demo                                    # full synthetic year, exported to out/demo',
+    'npm run eval -- --attempts 3                    # in-memory twins, seeded and graded from twin state',
+    'npm run mutate                                  # proves safety scenarios go red when their rules are disabled',
+    'npm run brief                                   # regenerates this brief from the latest reports',
   ];
-  if (verifyExists) lines.push('npx tsx src/cli.ts verify                # re-checks every binder file against its hash and OpenTimestamps proof');
-  return ['```bash', ...lines, '```'].join('\n');
+  if (verifyExists) lines.push('npm run verify -- --demo out/demo               # expected exit 1: names the demo artifact altered on purpose');
+  return [
+    '```bash',
+    ...lines,
+    '```',
+    '',
+    'For a live binder, copy `.env.example` to `.env`, provide the Google, GitHub, owner-email and profile values plus any optional integration keys, run `npm run exhibit -- run --live`, then run `npm run verify` without `--demo`.',
+  ].join('\n');
 }
 
 // ---------------- generate ----------------

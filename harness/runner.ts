@@ -45,7 +45,6 @@ const METRICS_EVENT_KINDS = [
   'figure_hallucination',
   'source_blocked',
 ] as const;
-const MAX_EVENTS_PER_KIND = 25;
 
 export interface AttemptMetrics {
   eventCounts: Record<string, number>;
@@ -221,7 +220,7 @@ export async function runScenarioAttempt(s: Scenario, attempt: number, opts: Mat
     for (const kind of METRICS_EVENT_KINDS) {
       const rows = env.ledger.events({ kind });
       eventCounts[kind] = rows.length;
-      for (const r of rows.slice(0, MAX_EVENTS_PER_KIND)) events.push({ kind: r.kind, detail: r.detail, at: r.at });
+      for (const r of rows) events.push({ kind: r.kind, detail: r.detail, at: r.at });
     }
     metrics = {
       eventCounts,

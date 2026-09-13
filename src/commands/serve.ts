@@ -4,13 +4,13 @@ import { buildLiveDeps } from '../config.js';
 import { startWebhookServer } from '../server/webhook.js';
 import { createLiveTwilio } from '../apps/live/index.js';
 import type { TextMessage } from '../apps/types.js';
+import { boundedIntervalMilliseconds, intervalMilliseconds, portNumber } from '../cli-validation.js';
 
 // `exhibit serve` (PRD 6.13, 6.14): runs the Twilio inbound webhook and the scheduled watch loop
 // in one process, so an inbound text triggers an immediate run (founder commands feel responsive)
-// on top of the regular hourly cadence. Mirrors cmdWatch in src/cli.ts, which this command is
-// meant to register alongside (patch below, cli.ts not owned here).
+// on top of the regular hourly cadence.
 
-const LIVE_ENV_VARS = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN', 'GITHUB_TOKEN'];
+const LIVE_ENV_VARS = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRESH_TOKEN', 'GITHUB_TOKEN', 'EXHIBIT_OWNER_EMAIL'];
 
 function explainLiveEnv(): void {
   console.log('serve needs the same env as `run --live`, plus TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_SENDER, TWILIO_PUBLIC_URL to serve the webhook (with TWILIO_API_KEY_SID + TWILIO_API_KEY_SECRET instead of the token, inbound texts are polled).');
@@ -22,8 +22,21 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
+export function hasCompleteTwilioWebhookEnv(env: NodeJS.ProcessEnv): boolean {
+  return Boolean(env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.TWILIO_SENDER && env.TWILIO_PUBLIC_URL);
+}
+
+export function twilioPollMilliseconds(value: string | undefined): number {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return 15_000;
+  return boundedIntervalMilliseconds(String(Math.max(seconds, 5)), 'TWILIO_POLL_SECONDS', 5);
+}
+
 export async function cmdServe(args: string[]): Promise<void> {
   const { values } = parseArgs({ args, options: { interval: { type: 'string', default: '3600' }, port: { type: 'string' } } });
+  const port = portNumber(values.port ?? process.env.PORT ?? '8787');
+  const intervalMs = intervalMilliseconds(values.interval!, '--interval');
+  const pollMs = twilioPollMilliseconds(process.env.TWILIO_POLL_SECONDS);
 
   const missing = LIVE_ENV_VARS.filter((v) => !process.env[v]);
   if (missing.length || !process.env.EXHIBIT_PROFILE) {
@@ -36,10 +49,7 @@ export async function cmdServe(args: string[]): Promise<void> {
   console.log('Features:');
   for (const f of features) console.log(`  ${f.enabled ? 'on ' : 'off'}  ${f.id}: ${f.reason}`);
 
-  const twilioReady = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PUBLIC_URL;
-  const port = Number(values.port ?? process.env.PORT ?? 8787);
-  const intervalMs = Number(values.interval) * 1000;
-
+  const twilioReady = hasCompleteTwilioWebhookEnv(process.env);
   let stopped = false;
   let running = false;
   let runAgainAfter = false;
@@ -78,7 +88,7 @@ export async function cmdServe(args: string[]): Promise<void> {
     : null;
 
   if (webhook) console.log(`Twilio webhook listening on :${port}`);
-  else console.log('Twilio webhook not started (TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_PUBLIC_URL missing).');
+  else console.log('Twilio webhook not started (TWILIO_ACCOUNT_SID/TWILIO_AUTH_TOKEN/TWILIO_SENDER/TWILIO_PUBLIC_URL incomplete).');
 
   // Without the webhook (API-key auth has no auth token to validate signatures with), poll
   // Twilio for new inbound messages so a founder command still triggers a run within seconds
@@ -86,8 +96,6 @@ export async function cmdServe(args: string[]): Promise<void> {
   const pollApi = webhook ? null : createLiveTwilio(process.env).api;
   // Blank or non-numeric falls back to 15s, and never below 5s: 0 or NaN would make setTimeout
   // fire immediately and hammer the Twilio API.
-  const pollSeconds = Number(process.env.TWILIO_POLL_SECONDS);
-  const pollMs = (Number.isFinite(pollSeconds) && pollSeconds > 0 ? Math.max(pollSeconds, 5) : 15) * 1000;
   let pollTimer: NodeJS.Timeout | null = null;
   if (pollApi) {
     const seen = new Set((await pollApi.listInbound().catch(() => [])).map((m) => m.sid));

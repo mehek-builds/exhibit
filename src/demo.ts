@@ -4,6 +4,7 @@ import { createHarnessEnv, graph } from '../harness/env.js';
 import { fullYearSeed, DARA } from '../harness/corpus.js';
 import type { FigureRow } from './ledger.js';
 import { affected } from './rules/graph.js';
+import { currentRelease } from './release.js';
 
 // The two-minute demo (PRD section 14), fully offline on in-memory twins: run the full synthetic
 // year with every available 6.13/6.14 extension wired in (fixture transports only, no real
@@ -37,6 +38,35 @@ function printNotCounted(text: string | null): void {
   if (!text) return;
   const m = text.match(/Not counted, by reason:\n([\s\S]*?)(\n\n|$)/);
   if (m) log(`  ${m[1]!.trim().split('\n').join('\n  ')}`);
+}
+
+export function latestEvalSummary(evalPath: string, expectedRelease?: string): string {
+  if (!existsSync(evalPath)) return 'run eval';
+  try {
+    const evalReport = JSON.parse(readFileSync(evalPath, 'utf8')) as {
+      backend?: string;
+      passRate?: number;
+      pass?: number;
+      total?: number;
+      attempts?: { passed?: boolean }[];
+      release?: string;
+    };
+    if (expectedRelease && evalReport.release !== expectedRelease) {
+      return `stale evaluation for ${evalReport.release ?? 'unknown release'}; run eval for ${expectedRelease}`;
+    }
+    const backend = evalReport.backend ?? 'unknown';
+    if (evalReport.attempts?.length) {
+      const passed = evalReport.attempts.filter((attempt) => attempt.passed === true).length;
+      return `${passed}/${evalReport.attempts.length} (${((passed / evalReport.attempts.length) * 100).toFixed(0)}%, backend=${backend})`;
+    }
+    if (typeof evalReport.passRate === 'number') return `${(evalReport.passRate * 100).toFixed(0)}% (backend=${backend})`;
+    if (typeof evalReport.pass === 'number' && typeof evalReport.total === 'number' && evalReport.total > 0) {
+      return `${evalReport.pass}/${evalReport.total} (backend=${backend})`;
+    }
+    return 'run eval';
+  } catch {
+    return 'run eval';
+  }
 }
 
 /** D6 (decision 16): no real person's scorecard may ever appear in the demo. `runDemo` always
@@ -105,7 +135,7 @@ export async function runDemo(outDir: string): Promise<void> {
       const { DISCOVERY_TIER1_FIXTURES } = await import('../harness/fixtures/discovery-tier1.js');
       const transport = new FixtureTransport(DISCOVERY_TIER1_FIXTURES);
       const gdelt = createGdeltAdapter({ transport });
-      env.deps.extensions = [...(env.deps.extensions ?? []), createDiscoveryExtension({ adapters: [gdelt], alwaysRun: true })];
+      env.deps.extensions = [...(env.deps.extensions ?? []), createDiscoveryExtension({ adapters: [gdelt], alwaysRun: true, transportKind: 'fixture' })];
       discoveryWired = true;
     } catch (err) {
       skip('src/discovery/extension.ts, src/integrations/gdelt.ts or harness/fixtures/discovery-tier1.ts', err);
@@ -354,6 +384,36 @@ export async function runDemo(outDir: string): Promise<void> {
       mkdirSync(dirname(full), { recursive: true });
       writeFileSync(full, Buffer.from(content));
     }
+
+    const integrityFixtures = (env as unknown as {
+      __integrityFixtures?: { blockHeaders: (height: number) => Promise<string | null> };
+    }).__integrityFixtures;
+    if (integrityFixtures) {
+      const { decodeOts } = await import('./integrity/ots.js');
+      const roots: Record<string, string> = {};
+      const stampableRoles = new Set(['original', 'render', 'member', 'signed_letter', 'translation']);
+      const artifacts = state.drive.files
+        .filter((file) => stampableRoles.has(file.appProperties?.role ?? ''))
+        .map((file) => env.twins.drivePath(file.id))
+        .filter((path): path is string => Boolean(path?.startsWith('Exhibit binder/')))
+        .map((path) => path.slice('Exhibit binder/'.length))
+        .sort();
+      for (const file of state.drive.files) {
+        if (!file.name.endsWith('.ots')) continue;
+        const content = env.twins.driveContent(file.id);
+        if (!content) continue;
+        const proof = decodeOts(content);
+        for (const path of proof.paths) {
+          if (path.attestation.kind !== 'bitcoin') continue;
+          const root = await integrityFixtures.blockHeaders(path.attestation.height);
+          if (root) roots[String(path.attestation.height)] = root;
+        }
+      }
+      writeFileSync(
+        join(outDir, 'integrity-chain.json'),
+        `${JSON.stringify({ kind: 'synthetic-fixture', roots, artifacts }, null, 2)}\n`,
+      );
+    }
     writeFileSync(join(outDir, 'scorecard.txt'), run2.scorecardText ?? run1.scorecardText ?? '');
 
     const reviewSheetId = env.ledger.get('review_sheet');
@@ -371,27 +431,15 @@ export async function runDemo(outDir: string): Promise<void> {
     writeFileSync(join(outDir, 'audit.json'), `${JSON.stringify(allIssues, null, 2)}\n`);
 
     log('');
-    log(`Exported to ${outDir}: drive/, scorecard.txt, review-sheet.csv, sent-mail.json, trace.jsonl, ledger.json, audit.json`);
+    log(`Exported to ${outDir}: drive/, integrity-chain.json, scorecard.txt, review-sheet.csv, sent-mail.json, trace.jsonl, ledger.json, audit.json`);
     if (extraSteps.length) log(extraSteps.join('\n'));
 
     // ---- Step 7: proof-loop line, computed from real data ----
     const a = affected(graph(), ['decisions-5-5']);
-    let evalLine: string;
     const evalPath = join(process.cwd(), 'reports', 'eval-latest.json');
-    if (existsSync(evalPath)) {
-      try {
-        const evalReport = JSON.parse(readFileSync(evalPath, 'utf8')) as { passRate?: number; pass?: number; total?: number };
-        if (typeof evalReport.passRate === 'number') evalLine = `${(evalReport.passRate * 100).toFixed(0)}%`;
-        else if (typeof evalReport.pass === 'number' && typeof evalReport.total === 'number' && evalReport.total > 0) evalLine = `${evalReport.pass}/${evalReport.total}`;
-        else evalLine = 'run eval';
-      } catch {
-        evalLine = 'run eval';
-      }
-    } else {
-      evalLine = 'run eval';
-    }
+    const evalLine = latestEvalSummary(evalPath, currentRelease());
     log('');
-    log(`Today's rule: accelerator acceptance counts under #1 and #2 (5.5). The dependents check over the prompt graph found ${a.prompts.length} prompt(s) depend on it (${a.prompts.join(', ') || 'none'}), exercised by scenarios ${a.scenarios.join(', ') || 'none'}. Arga scenario pass rate (decisions-5-5 dependents, reports/eval-latest.json): ${evalLine}. This demo run itself found ${allIssues.length} audit issue(s) across both runs.`);
+    log(`Today's rule: accelerator acceptance counts under #1 and #2 (5.5). The dependents check over the prompt graph found ${a.prompts.length} prompt(s) depend on it (${a.prompts.join(', ') || 'none'}), exercised by scenarios ${a.scenarios.join(', ') || 'none'}. Latest scenario pass rate (reports/eval-latest.json): ${evalLine}. This demo run itself found ${allIssues.length} audit issue(s) across both runs.`);
   } finally {
     await env.close();
   }

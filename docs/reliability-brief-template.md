@@ -249,11 +249,16 @@ The open web has no twin. The first live run recorded every fetched page as a fi
 
 ```bash
 git clone {{repo_url}} && cd exhibit && npm ci
-cp .env.example .env   # ARGA, ANTHROPIC, TWILIO, OPENALEX, BLS, ONET, PODCASTINDEX, PRODUCTHUNT, ORCID, USPTO, IA, DROPBOX_SIGN, DEEPL keys (all free tiers)
-npm run eval -- --scenarios all --attempts 3     # provisions twins, seeds, runs, grades from twin state
+npm run demo                                    # full synthetic year, exported to out/demo
+npm run eval -- --attempts 3                    # in-memory twins, seeded and graded from twin state
+npm run mutate                                  # proves safety scenarios go red when their rules are disabled
 npm run brief                                    # regenerates this brief's numbers from the ledger
-npx exhibit verify                               # re-checks every binder file against its hash and OpenTimestamps proof
+npm run verify -- --demo out/demo               # expected exit 1: names the demo artifact altered on purpose
 ```
+
+For a live binder, copy `.env.example` to `.env`, provide the Google, GitHub, owner-email and
+profile values plus any optional integration keys, run `npm run exhibit -- run --live`, then run
+`npm run verify` without `--demo`.
 
 ## 14. What this build hands back to each platform
 

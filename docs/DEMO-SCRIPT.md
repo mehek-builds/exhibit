@@ -40,7 +40,7 @@ these.
    - `out/demo-script-run/scorecard.txt`
    - `out/demo-script-run/review-sheet.csv`
    - `out/demo-script-run/audit.json`
-4. If `reports/eval-latest.json` does not exist, the closing line prints "Arga scenario pass rate: run eval" instead of a number — run `npx tsx src/cli.ts eval --attempts 3` beforehand if you want a real pass-rate number in the closing beat, and re-check the console line it produces before speaking a specific rate.
+4. If `reports/eval-latest.json` does not exist, the closing line prints "Latest scenario pass rate: run eval" instead of a number. Run `npx tsx src/cli.ts eval --attempts 3` beforehand if you want the pass count, percentage, and backend in the closing beat, and re-check the console line before speaking a specific rate.
 5. Do a fresh `npx tsx src/cli.ts demo --out out/demo-script-run` within an hour of presenting and re-read every number in this table against that run's console output before you go on. If any line differs, say the number on your screen, not the one printed here.
 
 ## Differences from PRD 14

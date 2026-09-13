@@ -130,6 +130,7 @@ export function fullStack(opts?: FullStackOptions): Pick<HarnessEnvOptions, 'ext
       out.push(
         createDiscoveryExtension({
           alwaysRun: true, // harness mode: ignore the 7-day live cadence so every run exercises discovery
+          transportKind: 'fixture',
           adapters: [
             createGdeltAdapter({ transport }),
             createHuggingFaceAdapter({ transport }),
