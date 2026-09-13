@@ -355,6 +355,7 @@ function worthSendingSection(m: MatrixResult): string {
     }
   }
   const top = [...holdReasons.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const holdRate = evaluated ? held / evaluated : null;
   const textsSent = eventCount(m, 'text_out');
   const textsEvaluated = eventCount(m, 'notification');
   const quietViolations = allEvents(m, 'text_out').filter((e) => e.detail.quiet_hours_violation).length;
@@ -365,6 +366,7 @@ function worthSendingSection(m: MatrixResult): string {
     `| Sent (after approval) | ${sent} |`,
     `| Revised then sent | ${revised} |`,
     `| Held | ${held} |`,
+    `| Hold rate | ${holdRate !== null ? `${Math.round(holdRate * 100)}% (${held} of ${evaluated})` : 'n/a (nothing evaluated)'} |`,
     `| Top hold reasons | ${top.length ? top.map(([r, n]) => `${r} (${n}x)`).join('; ') : 'none recorded in this batch'} |`,
     '| Emails in the Gmail twin without a matching send decision and approval | 0 (target 0) |',
     `| Proactive texts to the founder: evaluated, sent, held | ${textsEvaluated}, ${textsSent}, ${Math.max(0, textsEvaluated - textsSent)} |`,

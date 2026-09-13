@@ -51,6 +51,26 @@ function linkedExhibits(r: Recommender, exhibits: ExhibitRecord[]): ExhibitRecor
   return exhibits.filter((e) => e.status === 'qualifying' && e.people.some((p) => p.email?.toLowerCase() === email));
 }
 
+/**
+ * PRD 6.8: a letter request is also triggered for a criterion that is one exhibit from `met`, not only
+ * one already `met`. A `needs_attorney` item is filed to the exhibits table (with `people`) and is the
+ * scorecard's own definition of "one exhibit from met" (6.7: building = invitations, future-pay
+ * contracts, needs_attorney items). Rejected items never trigger a request.
+ */
+function nearMissExhibits(r: Recommender, exhibits: ExhibitRecord[]): ExhibitRecord[] {
+  const email = r.email.toLowerCase();
+  return exhibits.filter((e) => e.status === 'needs_attorney' && e.people.some((p) => p.email?.toLowerCase() === email));
+}
+
+/** Every exhibit the recommender can honestly speak to: exhibits for a criterion already `met`, plus
+ * exhibits for a criterion one exhibit from `met` (PRD 6.8). Still requires worth-sending and the
+ * founder's APPROVE for that exact letter id before anything sends. */
+function letterTriggerExhibits(r: Recommender, exhibits: ExhibitRecord[]): ExhibitRecord[] {
+  const seen = new Set<string>();
+  const combined = [...linkedExhibits(r, exhibits), ...nearMissExhibits(r, exhibits)];
+  return combined.filter((e) => (seen.has(e.exhibit_id) ? false : (seen.add(e.exhibit_id), true)));
+}
+
 export function draftLetter(r: Recommender, exhibits: ExhibitRecord[], profile: FounderProfile): string {
   const criteria = [...new Set(exhibits.flatMap((e) => e.criteria))].sort() as O1Criterion[];
   const metricLines = exhibits.flatMap((e) =>
@@ -200,7 +220,7 @@ export async function processLetters(deps: LetterDeps): Promise<LetterSummary> {
 
   for (const r of profile.recommenderCandidates) {
     const id = letterId(r);
-    const linked = linkedExhibits(r, exhibits);
+    const linked = letterTriggerExhibits(r, exhibits);
     if (linked.length === 0) {
       summary.skipped.push({ email: r.email, reason: 'no linked qualifying exhibit' });
       continue;

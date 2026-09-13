@@ -203,6 +203,10 @@ export async function intake(deps: IntakeDeps): Promise<IntakeResult> {
       founderMessages.push(msg);
       continue;
     }
+    // PRD 6.1: spam is never read; skip anything labeled SPAM or TRASH even if a
+    // source didn't already exclude it (the live Gmail list query does, but this is
+    // the backstop so intake itself never admits it).
+    if (msg.labels.includes('SPAM') || msg.labels.includes('TRASH')) continue;
     const item = gmailItem(msg);
     if (unseen(item)) items.push(item);
   }
@@ -219,7 +223,10 @@ export async function intake(deps: IntakeDeps): Promise<IntakeResult> {
   let calCount = 0;
   for (const ev of calendar) {
     const ended = Date.parse(ev.end) <= now.getTime();
-    if (!ended && ev.status !== 'cancelled') continue;
+    // PRD 6.1: only events that ended are admitted (not future events). A cancelled
+    // event that has already ended is still admitted so its cancellation can be noted
+    // (PRD 9 E6); a cancelled event still in the future is not (nothing occurred yet).
+    if (!ended) continue;
     const item = calendarItem(ev);
     if (unseen(item)) {
       items.push(item);

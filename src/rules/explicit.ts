@@ -27,8 +27,13 @@ export const PATTERNS = {
   payToEnter: /\b(entry fee|nomination fee|self-nominat\w*|pay to (?:enter|apply))\b/i,
   openMembership: /\b(anyone can join|open to all|membership fee|join (?:our|the) community)\b/i,
   exhibition: /\b(exhibited at|on display at|gallery show|art (?:exhibition|showcase))\b/i,
+  artisticAthleticContribution: /\b(artistic|athletic)\b[^\n]{0,90}\b(original contribution|contribution of major significance|major significance)\b|\b(original contribution|contribution of major significance)\b[^\n]{0,90}\b(artistic|athletic)\b/i,
+  performingArtsSuccess: /\b(box office|ticket sales|gate receipts|record sales|streaming (?:numbers|figures))\b[^\n]{0,90}\b(commercial success|performing arts)\b|\b(commercial success)\b[^\n]{0,90}\b(performing arts|box office|ticket sales|record sales)\b/i,
   revenue: /\b(revenue|MRR|ARR|gross sales)\b/i,
   pay: /\b(salary|base pay|compensation|stock|equity|shares|SAFE|investment)\b/i,
+  /** A personal-compensation statement tied to the founder, e.g. "her salary", "founder equity", "paid the founder", "I earn/receive". Not a bare occurrence of the word anywhere in the item. */
+  personalPay:
+    /\b(?:(?:her|his|their|my|your|the founder'?s?|I) (?:salary|base pay|compensation|equity|stock|shares|grant)|founder (?:stock|shares|equity)|(?:paid|pays|granted|awarded) (?:the founder|her|him|me|you)|I (?:earn|receive|was paid|am paid))\b/i,
 } as const;
 
 function enabled(opts: RuleOptions | undefined, id: string): boolean {
@@ -198,12 +203,36 @@ const RULES: ExplicitRule[] = [
     },
   },
   {
+    id: 'X-artistic-athletic-eb1a-only',
+    apply(item) {
+      const q = quoteFor(fullText(item), PATTERNS.artisticAthleticContribution);
+      if (!q) return null;
+      return mapping([], 'needs_attorney', 'X-artistic-athletic-eb1a-only', 'Artistic or athletic original contributions count for EB-1A (v); the O-1A has no counterpart, so it needs the attorney (5.2).', q, {
+        eb1a_criteria: ['v'],
+        // "Major significance" is a judgment on the whole record, not a keyword; the attorney decides.
+        eb1a_status: 'needs_attorney',
+      });
+    },
+  },
+  {
+    id: 'X-performing-arts-eb1a-only',
+    apply(item) {
+      const q = quoteFor(fullText(item), PATTERNS.performingArtsSuccess);
+      if (!q) return null;
+      return mapping([], 'rejected', 'X-performing-arts-eb1a-only', 'Commercial success in the performing arts counts for EB-1A (x) only; the O-1A has no counterpart (5.2).', q, {
+        eb1a_criteria: ['x'],
+        // A mention of box office or sales is not proof of commercial success; the attorney decides.
+        eb1a_status: 'needs_attorney',
+      });
+    },
+  },
+  {
     id: 'T-revenue-not-pay',
     apply(item, cls) {
       if (cls.kind !== 'remuneration') return null;
       const text = fullText(item);
       const q = quoteFor(text, PATTERNS.revenue);
-      if (!q || /\b(salary|equity|stock|shares)\b/i.test(text)) return null;
+      if (!q || PATTERNS.personalPay.test(text)) return null;
       return mapping([8], 'rejected', 'T-revenue-not-pay', 'Company revenue is not personal remuneration (#8).', q);
     },
   },
@@ -241,6 +270,16 @@ export function enforceInvariants(m: Mapping, item: RedactedItem, profile: Found
   }
   if (enabled(opts, 'T-self-authored-not-press') && isSelfAuthored(item, profile)) {
     drop(3, "The founder's own writing is never press about her (T-self-authored-not-press).");
+  }
+  if (
+    enabled(opts, 'T-revenue-not-pay') &&
+    PATTERNS.revenue.test(text) &&
+    !PATTERNS.personalPay.test(text) &&
+    !PATTERNS.funding.test(text) &&
+    !PATTERNS.equity.test(text) &&
+    !PATTERNS.futurePay.test(text)
+  ) {
+    drop(8, 'Company revenue alone is never personal remuneration (T-revenue-not-pay).');
   }
   if (out.criteria.length === 0 && out.eb1a_criteria.length === 0 && out.status !== 'rejected') {
     out.status = 'rejected';

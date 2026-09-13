@@ -38,7 +38,13 @@ export interface CommandParser {
 
 // ---------------- HeuristicCommandParser: deterministic, used offline (and in S20) ----------------
 
-const INJECTION_RE = /\b(ignore|disregard|forget)\b[^.]{0,40}\b(your |the |previous |prior |these )?(rules?|instructions?|constraints?|guardrails?)\b/i;
+export const INJECTION_RE = /\b(ignore|disregard|forget)\b[^.]{0,40}\b(your |the |previous |prior |these )?(rules?|instructions?|constraints?|guardrails?)\b/i;
+
+/** TX-data-not-instructions guard, shared by every parser (heuristic and model-backed alike): an
+ * injection-shaped text is data, never a command, regardless of which parser is wired. */
+export function isInjectionShaped(text: string): boolean {
+  return INJECTION_RE.test(text.trim());
+}
 
 const KEYWORD_RE = /\b(approve|deny|pause|resume|add[ _]evidence|next|status|stop|start|yes)\b/gi;
 
@@ -160,7 +166,7 @@ export class HeuristicCommandParser implements CommandParser {
     if (!trimmed) return [];
     // TX-data-not-instructions: an embedded instruction is treated as data and produces no command,
     // and no reply (E54); it is not the same case as a genuinely unclear text.
-    if (INJECTION_RE.test(trimmed)) return [];
+    if (isInjectionShaped(trimmed)) return [];
 
     const segments = splitSegments(trimmed);
     if (segments.length) return segments.map((s) => parseSegment(s, ctx));
@@ -194,6 +200,10 @@ export class AnthropicCommandParser implements CommandParser {
   }
 
   async parse(text: string, ctx: ParseContext): Promise<ParsedCommand[]> {
+    // TX-data-not-instructions: applied identically to both parsers (heuristic and model-backed),
+    // so an injection-shaped text never reaches the model and never yields a command either way.
+    if (isInjectionShaped(text)) return [];
+
     const system = renderPrompt(this.graph, 'text-commands');
     const prompt = [
       '<text>',
@@ -211,6 +221,21 @@ export class AnthropicCommandParser implements CommandParser {
       output: Output.object({ schema: ANTHROPIC_COMMAND_SCHEMA }),
       maxRetries: 1,
     });
-    return output.commands;
+
+    // Defense in depth: re-validate the structured output against CommandSchema (zod already
+    // enforces this on the way out of Output.object, but a future output/schema drift must not
+    // silently pass through), and bound the count to what the text could plausibly contain --
+    // the model can never hallucinate more commands than there are command keywords in the text.
+    const validated = output.commands.filter((c) => {
+      try {
+        CommandSchema.parse(c);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    const keywordMatches = [...text.matchAll(KEYWORD_RE)].length;
+    const cap = Math.max(1, keywordMatches);
+    return validated.slice(0, cap);
   }
 }

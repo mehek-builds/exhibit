@@ -257,9 +257,13 @@ async function handleMessage(ctx: ExtensionContext, twilio: TwilioApi, parser: C
     return;
   }
 
+  // Privacy: the parser (model-backed or heuristic) only ever sees redacted text -- the raw
+  // msg.body reaches nothing but the ledger's own redacted copy below (section 6.2).
+  const redactedBody = redactText(msg.body).text;
+
   let commands: ParsedCommand[];
   try {
-    commands = await parser.parse(msg.body, { now: ctx.now, pendingFigureNumbers: pendingFigureNumbers(deps.ledger) });
+    commands = await parser.parse(redactedBody, { now: ctx.now, pendingFigureNumbers: pendingFigureNumbers(deps.ledger) });
   } catch (err) {
     commands = [{ kind: 'unclear', question: "I couldn't read that message. Could you resend it?" }];
     ctx.trace.tool('text.parse', { sid: msg.sid }, undefined, String(err));

@@ -40,3 +40,8 @@ Uploaded to Lemma as the agent's provided context, so every trace is audited aga
 | 12 | `src/research/corroborator.ts` allowlist, fetch-and-check, two-source and agreement rules | S17 |
 | 13 | `src/review/queue.ts` reads only Decision and Reason; no automatic approval | S18 |
 | 14 | `allowed_domains` on the web tools and a domain re-check on every URL | S17 |
+| 15 | `src/text/channel.ts` verified-number check (`normalizeNumber`/`handleMessage`, rule `TX-verified-number`) and the confirm-before-apply gate on multi-figure approves (`TX-confirm-irreversible`) | S20; mutation `disable TX-verified-number`, `disable TX-confirm-irreversible` |
+| 16 | `src/discovery/identity.ts` `secondIdentifier`, enforced in `src/discovery/extension.ts` (rule `X-second-identifier`) | S21; mutation `disable X-second-identifier` |
+| 17 | `src/integrity/opentimestamps.ts` (`stampDigest` sends only the 32-byte sha256 digest), `src/integrity/archive.ts` (only public source URLs), `src/translate/translate.ts` (redacted, opt-in-only text) + `src/integrations/deepl.ts` (rule `X-translation-opt-in`) | S22, S24; mutation `disable X-translation-opt-in` |
+| 18 | `src/letters/signing.ts` `processOne` (recommender confirmation, then founder approval, before any Dropbox Sign request; day-mode test-mode/controlled-signer refusal; rule `X-sign-both-approvals`) | S23; mutation `disable X-sign-both-approvals` |
+| 19 | `src/integrations/registry.ts` `integrationStatus`/`categorizeForBrief` (`used_live` only from a recorded `integration_call` event with `transport: 'live'`; USCIS always `sandbox_only`), rendered in `src/brief.ts` | audit |

@@ -215,6 +215,15 @@ export async function corroborate(exhibits: ExhibitRecord[], deps: CorroborateDe
           continue;
         }
         trace.tool('web.fetch', { url: cand.url, fetcher: fetcher.kind }, { status: page.status, bytes: page.body.length });
+        // Redirects can land the fetch off the allowlist even though `cand.url` passed the check
+        // above; re-check the final URL's host before trusting anything fetched from it.
+        const finalHost = domainOf(page.url);
+        if (!finalHost || policy.never.some((n) => hostMatches(finalHost, n)) || !allowed.some((a) => hostMatches(finalHost, a))) {
+          summary.blocked.push({ url: page.url, reason: 'redirected off the primary or verifier list' });
+          ledger.event({ run_id: deps.runId, trace_id: trace.traceId, kind: 'source_blocked', detail: { exhibit_id: exhibit.exhibit_id, url: page.url, measure: cand.measure }, at: now.toISOString() });
+          trace.span('corroborator.blocked', { url: page.url, measure: cand.measure }, { reason: 'redirect_domain' });
+          continue;
+        }
       }
       if (page.status !== 200) {
         summary.blocked.push({ url: cand.url, reason: `status ${page.status} (paywalled or blocked)` });

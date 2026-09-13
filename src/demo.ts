@@ -39,10 +39,27 @@ function printNotCounted(text: string | null): void {
   if (m) log(`  ${m[1]!.trim().split('\n').join('\n  ')}`);
 }
 
+/** D6 (decision 16): no real person's scorecard may ever appear in the demo. `runDemo` always
+ * seeds the harness with the synthetic fixture founder (`DARA`, from harness/corpus.ts), but
+ * this guard checks the profile the harness actually ends up with -- so if the seeding above is
+ * ever changed to accept an outside profile (an env var, a CLI flag), the demo refuses instead of
+ * silently running a real founder's evidence through a public run. */
+export function assertSyntheticProfile(profile: { name: string; emails: string[] }): void {
+  const nameOk = profile.name === DARA.name;
+  const emailsOk = profile.emails.length > 0 && profile.emails.every((e) => e.toLowerCase().endsWith('.example'));
+  if (!nameOk || !emailsOk) {
+    throw new Error(
+      `Exhibit demo refused to run: profile "${profile.name}" <${profile.emails.join(', ')}> is not the synthetic demo fixture ` +
+        `(expected name "${DARA.name}" and every email ending in ".example"). D6: no real person's scorecard may appear in the demo.`,
+    );
+  }
+}
+
 export async function runDemo(outDir: string): Promise<void> {
   // 18:00 UTC = 11:00 America/Los_Angeles, outside the founder's default quiet hours (22:00-08:00
   // Pacific), so the phone-style notifications below are not silently deferred by the clock alone.
   const env = createHarnessEnv({ seed: fullYearSeed(), scenarioId: 'demo', gate: 'mcp', now: new Date('2026-09-13T18:00:00Z') });
+  assertSyntheticProfile(env.profile);
   const extraSteps: string[] = [];
   try {
     log('=== Exhibit demo (PRD section 14) ===');

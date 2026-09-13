@@ -20,5 +20,19 @@
     "result": "8/8 scenarios green",
     "release": "dev",
     "at": "2026-09-13T17:59:47.771Z"
+  },
+  {
+    "fragment": "crosswalk",
+    "description": "Re-proved crosswalk",
+    "dependents": [
+      "mapper",
+      "scorecard-writer"
+    ],
+    "scenarios": [
+      "S16"
+    ],
+    "result": "1/1 scenarios green",
+    "release": "542f012",
+    "at": "2026-09-13T18:48:38.434Z"
   }
 ]

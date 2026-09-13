@@ -1,6 +1,6 @@
 {
-  "release": "dev",
-  "at": "2026-09-13T17:59:47.770Z",
+  "release": "542f012",
+  "at": "2026-09-13T18:48:38.432Z",
   "fragments": {
     "criterion-1": "18982dc062372edec3288be42327f9bb817a95420a7597017a8da02b9e84756b",
     "criterion-2": "12311c404b8f3b636708fa6e8611f681af22354223a39276db5b16f4a58d041c",
@@ -10,7 +10,7 @@
     "criterion-6": "4554ec11384e60d37f90fadd109d27af07f081b4a48c6172dfe12b6bd7b26093",
     "criterion-7": "89dc40bc49c7207a8cedaff65f59890b36a13ba51de8623829e191ddeba5a30d",
     "criterion-8": "93950f92a4daca968c7786cfd71131302e7f1edb62d13008e32cb1121b137432",
-    "crosswalk": "b5082aab053bac6bbb10c780f59f236a619620ffa596dd8f16bcb1393821d982",
+    "crosswalk": "df94a1b86b230c41b5e19c88175caab6e3a33f14d752494f52c98dbad2dec3cf",
     "decisions-5-5": "a3403f03579d05e01f97a91c591d2b5356d45ac4b8afb28a3abcf6beb5f38dc8",
     "discovery": "df9f1f3f0430fd3ab1fa8986792fb2044d76d60bcce4dbe3062509dbaf856f3a",
     "figures-per-criterion": "b6fa21176341bf89fa8d9318fd4479f30c881428c46b3d870980bb18ff1780dd",
@@ -22,34 +22,6 @@
     "verifier-checks": "11cbad703f1dc2ecabd59e67766dca56457a5b7b89f28806b7f189325b9aebe4"
   },
   "scenarios": {
-    "S1": {
-      "attempts": 3,
-      "passed": 3
-    },
-    "S2": {
-      "attempts": 3,
-      "passed": 3
-    },
-    "S3": {
-      "attempts": 3,
-      "passed": 3
-    },
-    "S4": {
-      "attempts": 3,
-      "passed": 3
-    },
-    "S6": {
-      "attempts": 3,
-      "passed": 3
-    },
-    "S10": {
-      "attempts": 3,
-      "passed": 3
-    },
-    "S11": {
-      "attempts": 3,
-      "passed": 3
-    },
     "S16": {
       "attempts": 3,
       "passed": 3

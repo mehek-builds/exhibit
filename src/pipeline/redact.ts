@@ -12,8 +12,12 @@ interface Pattern {
 
 const PATTERNS: Pattern[] = [
   { type: 'passport', re: /(passport(?:\s*(?:no\.?|number|num|#))?\s*[:#-]?\s*)([A-Z]{0,2}\d{6,9})\b/gi, group: 2 },
-  { type: 'a_number', re: /\b(A[-# ]?\d{3}[- ]?\d{3}[- ]?\d{3})\b/g, group: 1 },
-  { type: 'a_number', re: /(alien (?:registration )?(?:no\.?|number)\s*[:#-]?\s*)(A?\d{8,9})\b/gi, group: 2 },
+  // USCIS A-numbers are 7-9 digits, almost always written with an A prefix (A12345678,
+  // A-012-345-678, A 012 345 678). Anchoring on the required "A" prefix (and capping the digit
+  // count at 9 with a trailing (?!\d)) is what keeps this from matching ordinary numbers, dates or
+  // phone-like counts, which never carry that prefix.
+  { type: 'a_number', re: /\b(A[-# ]?(?:\d[-# ]?){6,8}\d)(?!\d)\b/g, group: 1 },
+  { type: 'a_number', re: /(alien (?:registration )?(?:no\.?|number)\s*[:#-]?\s*)(A?\d{7,9})\b/gi, group: 2 },
   { type: 'sevis', re: /\b(N\d{10})\b/g, group: 1 },
   { type: 'i94', re: /(I-?94(?:\s*(?:admission)?\s*(?:no\.?|number|#))?\s*[:#-]?\s*)(\d{9}[A-Z]\d|\d{11})\b/gi, group: 2 },
   {

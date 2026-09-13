@@ -19,6 +19,11 @@ export interface TwilioApiOptions {
   /** 'whatsapp:+14155238886' for the Sandbox, or a bare E.164 number for SMS. */
   sender: string;
   transport?: HttpTransport;
+  /** Minimum gap enforced between two `send()` calls, honoring the trial rate limit above. Default 3000ms. */
+  minSendIntervalMs?: number;
+  /** Injectable clock/sleep so tests can assert the wait without actually waiting. */
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 function basicAuth(sid: string, token: string): string {
@@ -65,11 +70,23 @@ export function createTwilioApi(opts: TwilioApiOptions): TwilioApi {
   const transport = opts.transport ?? new FetchTransport();
   const base = `https://api.twilio.com/2010-04-01/Accounts/${opts.accountSid}`;
   const auth = basicAuth(opts.accountSid, opts.authToken);
+  const minSendIntervalMs = opts.minSendIntervalMs ?? 3000;
+  const now = opts.now ?? (() => Date.now());
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let lastSendAt: number | null = null;
 
   return {
     sender: opts.sender,
 
     async send(message) {
+      // Trial rate limit (~1 message per 3s per sender, see module doc above): never enforced by
+      // Twilio's own client, so this adapter self-throttles at the send path.
+      if (lastSendAt !== null) {
+        const elapsed = now() - lastSendAt;
+        if (elapsed < minSendIntervalMs) await sleep(minSendIntervalMs - elapsed);
+      }
+      lastSendAt = now();
+
       const to = message.to.startsWith('whatsapp:') || opts.sender.startsWith('whatsapp:') ? (message.to.startsWith('whatsapp:') ? message.to : `whatsapp:${message.to}`) : message.to;
       const res = await transport.request({
         method: 'POST',

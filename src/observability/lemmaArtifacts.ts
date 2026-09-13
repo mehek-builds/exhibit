@@ -14,8 +14,12 @@ export interface UploadResult {
 
 /**
  * Does not pretend to upload anything. @uselemma/tracing 7.12.0 has no artifact/instructions
- * upload API, so this returns the honest non-result the PRD asks for when one is missing: upload
- * constraints/hard-constraints.md by hand in the Lemma UI instead.
+ * upload API, so this returns the honest non-result the PRD asks for when one is missing.
+ *
+ * The constraints upload is a MANUAL, ONE-TIME step: paste constraints/hard-constraints.md into
+ * the Lemma UI yourself (project settings -> Artifacts, or wherever the current Lemma UI puts it)
+ * after each edit to that file. There is no endpoint to call and none should be invented here --
+ * see docs/integrations/LEMMA.md for the full note.
  */
 export function uploadConstraints(_lemma: Lemma, _markdown: string): UploadResult {
   return {
