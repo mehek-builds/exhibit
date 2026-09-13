@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -109,6 +109,19 @@ describe('exported demo verification fails closed', () => {
     expect(result.files_checked).toContain('sub/unlisted.eml');
     expect(result.failed).toContainEqual({ path: 'sub/unlisted.eml', reason: 'timestamp proof exists but the artifact is not listed in the synthetic chain manifest' });
   });
+
+  it('finishes on a symlink loop and does not follow symlinks into proofs', async () => {
+    const { outDir, binder } = makeExport({ kind: 'synthetic-fixture', roots: {}, artifacts: ['listed.eml'] });
+    writeFileSync(join(binder, 'listed.eml'), 'evidence');
+    mkdirSync(join(binder, 'a'), { recursive: true });
+    symlinkSync(binder, join(binder, 'a', 'up'), 'dir');
+    symlinkSync(join(binder, 'a'), join(binder, 'loop'), 'dir');
+
+    const result = await verifyExportedDemo(outDir);
+
+    expect(result.passed).toEqual([]);
+    expect(result.failed.map((f) => f.path)).toEqual(['listed.eml']);
+  }, 5000);
 
   it('returns one from cmdVerify and the package binary for malformed exports without live credentials', async () => {
     const { outDir, binder } = makeExport({ kind: 'synthetic-fixture', roots: {}, artifacts: ['file.eml'] });

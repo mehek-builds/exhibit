@@ -127,10 +127,18 @@ export async function verifyExportedDemo(outDir: string): Promise<VerifyBinderRe
   // Fail closed on proofs the manifest doesn't list: deleting a tampered file's manifest entry must
   // not make verify skip it.
   const listed = new Set(artifacts);
-  const proofs = (readdirSync(binderRoot, { recursive: true }) as string[])
-    .map((p) => p.split(sep).join('/'))
-    .filter((p) => p.endsWith('.ots'))
-    .sort();
+  // Walk by hand and never follow symlinks: a crafted export with a symlink loop must not hang verify.
+  const proofs: string[] = [];
+  const walk = (dir: string, rel: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (entry.isSymbolicLink()) continue;
+      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) walk(join(dir, entry.name), childRel);
+      else if (entry.isFile() && entry.name.endsWith('.ots')) proofs.push(childRel);
+    }
+  };
+  walk(binderRoot, '');
+  proofs.sort();
   for (const proof of proofs) {
     const artifact = proof.slice(0, -'.ots'.length);
     if (listed.has(artifact)) continue;
