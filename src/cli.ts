@@ -381,7 +381,7 @@ function cmdHelp(): void {
   run --live
   watch --live [--interval <seconds>]
   serve [--interval <seconds>] [--port <n>]   Twilio webhook plus the scheduled run (live)
-  verify                                      Re-check every binder file against its hash and timestamp proof
+  verify [--demo out/demo]                    Re-check a live binder or an exported synthetic demo
   loop                                        Lifted-scenario loop status and detector labels from reports/eval-latest.json
   help`);
 }

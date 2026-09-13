@@ -337,6 +337,29 @@ export async function runDemo(outDir: string): Promise<void> {
       mkdirSync(dirname(full), { recursive: true });
       writeFileSync(full, Buffer.from(content));
     }
+
+    const integrityFixtures = (env as unknown as {
+      __integrityFixtures?: { blockHeaders: (height: number) => Promise<string | null> };
+    }).__integrityFixtures;
+    if (integrityFixtures) {
+      const { decodeOts } = await import('./integrity/ots.js');
+      const roots: Record<string, string> = {};
+      for (const file of state.drive.files) {
+        if (!file.name.endsWith('.ots')) continue;
+        const content = env.twins.driveContent(file.id);
+        if (!content) continue;
+        const proof = decodeOts(content);
+        for (const path of proof.paths) {
+          if (path.attestation.kind !== 'bitcoin') continue;
+          const root = await integrityFixtures.blockHeaders(path.attestation.height);
+          if (root) roots[String(path.attestation.height)] = root;
+        }
+      }
+      writeFileSync(
+        join(outDir, 'integrity-chain.json'),
+        `${JSON.stringify({ kind: 'synthetic-fixture', roots }, null, 2)}\n`,
+      );
+    }
     writeFileSync(join(outDir, 'scorecard.txt'), run2.scorecardText ?? run1.scorecardText ?? '');
 
     const reviewSheetId = env.ledger.get('review_sheet');
@@ -354,7 +377,7 @@ export async function runDemo(outDir: string): Promise<void> {
     writeFileSync(join(outDir, 'audit.json'), `${JSON.stringify(allIssues, null, 2)}\n`);
 
     log('');
-    log(`Exported to ${outDir}: drive/, scorecard.txt, review-sheet.csv, sent-mail.json, trace.jsonl, ledger.json, audit.json`);
+    log(`Exported to ${outDir}: drive/, integrity-chain.json, scorecard.txt, review-sheet.csv, sent-mail.json, trace.jsonl, ledger.json, audit.json`);
     if (extraSteps.length) log(extraSteps.join('\n'));
 
     // ---- Step 7: proof-loop line, computed from real data ----
