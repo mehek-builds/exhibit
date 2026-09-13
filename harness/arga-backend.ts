@@ -456,8 +456,21 @@ export class ArgaTwinsAdapter {
   }
 
   /** Call once, after seeding and before the agent's first run. */
-  async captureBaseline(): Promise<void> {
-    const { snapshot, failed } = await this.fetchSnapshot();
+  async captureBaseline(expect: { messages: number; pollMs?: number; timeoutMs?: number } = { messages: 0 }): Promise<void> {
+    // Seed inserts can take a moment to show in the twins' list endpoints. A baseline read before
+    // they do would later count every late-listed seed item as an agent write, so wait until the
+    // mailbox lists every seeded message and the calendar count holds steady across two reads.
+    const deadline = Date.now() + (expect.timeoutMs ?? 60_000);
+    let prevEvents = -1;
+    let { snapshot, failed } = await this.fetchSnapshot();
+    while (failed.length === 0 && (snapshot.gmail.messages.length < expect.messages || snapshot.calendar.events.length !== prevEvents)) {
+      if (Date.now() > deadline) {
+        throw new Error(`arga_seed_not_visible: gmail lists ${snapshot.gmail.messages.length} of ${expect.messages} seeded messages; calendar ${snapshot.calendar.events.length} events, still changing`);
+      }
+      prevEvents = snapshot.calendar.events.length;
+      if (snapshot.gmail.messages.length < expect.messages) await new Promise((r) => setTimeout(r, expect.pollMs ?? 3000));
+      ({ snapshot, failed } = await this.fetchSnapshot());
+    }
     // Without a complete baseline every seeded item would later diff as an agent write.
     if (failed.length > 0) throw new Error(`arga_baseline_unreadable: ${failed.join(', ')}`);
     this.baseline = snapshot;
@@ -732,7 +745,7 @@ export async function createArgaHarnessEnv(opts: ArgaBackendOptions & { reuseArg
     ids = await seedTwinsThroughApis(api, opts.seed);
     readApps = withSeedIds(argaApps({ runId, status: 'ready', twins, proxyToken }, opts.profile.emails[0]!, opts.profile, { github: fixtures.apps.github, linkedin: fixtures.apps.linkedin }), ids);
     adapter = new ArgaTwinsAdapter(api, readApps, fixtures, ids, agentLog, opts.apiKey, runId, opts.baseUrl);
-    await adapter.captureBaseline();
+    await adapter.captureBaseline({ messages: opts.seed.gmail.filter((m) => !m.labels.includes('SPAM') && !m.labels.includes('TRASH')).length, pollMs: opts.readyTimeoutMs && opts.readyTimeoutMs < 10_000 ? 50 : undefined });
   } catch (err) {
     // A half-seeded environment must not be left for the next attempt to find.
     if (!opts.keepEnvironment) await client.scenarios.deleteTwinEnvironment(argaScenarioId).catch(() => undefined);
