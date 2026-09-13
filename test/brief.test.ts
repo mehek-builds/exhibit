@@ -215,12 +215,18 @@ describe('generateBrief (mutation table renders in section 5, after known answer
   });
 });
 
-describe('generateBrief (Arga backend risks render in section 5)', () => {
-  it('states the two ARGA.md UNCONFIRMED risks in plain language', () => {
+describe('generateBrief (Arga backend status renders in section 5)', () => {
+  it('says a memory batch ran in memory, not on Arga, and states what the live service established', () => {
     const brief = generateBrief({ eval: baseMatrix(), graph });
-    expect(brief).toMatch(/seed_config/);
+    expect(brief).toMatch(/ran on Exhibit's own in-memory twins, not the hosted Arga service/);
     expect(brief).toMatch(/op log/);
-    expect(brief).toMatch(/never been run against the real service/);
+    expect(brief).not.toMatch(/never been run against the real service/);
+  });
+
+  it("says an arga batch ran on Arga Labs' hosted twins", () => {
+    const brief = generateBrief({ eval: { ...baseMatrix(), backend: 'arga' }, graph });
+    expect(brief).toMatch(/Every attempt in this batch ran on Arga Labs' hosted twins/);
+    expect(brief).toMatch(/All twins run on Arga Labs' hosted twins \(backend: arga\)/);
   });
 });
 

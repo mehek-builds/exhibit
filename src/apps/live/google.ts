@@ -4,7 +4,7 @@ import type { calendar_v3, docs_v1, drive_v3, gmail_v1 } from 'googleapis';
 import type { OAuth2Client } from 'google-auth-library';
 import type { Apps, CalendarAttendee, CalendarEvent, DriveFile, DrivePermission, GmailMessage, OutgoingEmail } from '../types.js';
 import { FOLDER_MIME } from '../types.js';
-import { sha256 } from '../../util.js';
+import { mapLimit, sha256 } from '../../util.js';
 import { base64url, buildRawEmail, decodeBase64url, parseRawEmail } from './mime.js';
 
 // Live Gmail, Calendar, Drive, Docs and Sheets clients (PRD 6, 7.1, 7.5). `rootUrl` is the same
@@ -79,6 +79,10 @@ export function createGoogleApps(opts: GoogleAppsOptions): Pick<Apps, 'gmail' | 
   const drive = google.drive({ version: 'v3', ...base });
   const docs = google.docs({ version: 'v1', ...base });
   const sheets = google.sheets({ version: 'v4', ...base });
+  // googleapis rewrites a client-level `rootUrl` onto the request URL but NOT onto the media upload
+  // URL (googleapis-common apirequest.js), so without this per-call option every upload goes to
+  // www.googleapis.com even when the client points at a twin (verified 2026-09-13 against Arga).
+  const mediaOptions = opts.rootUrl ? { rootUrl: opts.rootUrl.endsWith('/') ? opts.rootUrl : `${opts.rootUrl}/` } : {};
 
   return {
     gmail: {
@@ -91,18 +95,23 @@ export function createGoogleApps(opts: GoogleAppsOptions): Pick<Apps, 'gmail' | 
           pageToken = res.data.nextPageToken ?? undefined;
         } while (pageToken);
 
+        // Fetched 8 at a time: one-by-one reads cost a full round trip each (about 0.5 s per message
+        // against Arga from Dubai), which made a 324-message inbox take minutes per read.
+        const fetched = await mapLimit(
+          ids.filter((ref) => !!ref.id),
+          8,
+          async (ref) => ({ ref, res: await gmail.users.messages.get({ userId: 'me', id: ref.id!, format: 'raw' }) }),
+        );
         const out: GmailMessage[] = [];
-        for (const ref of ids) {
-          if (!ref.id) continue;
-          const res = await gmail.users.messages.get({ userId: 'me', id: ref.id, format: 'raw' });
+        for (const { ref, res } of fetched) {
           const rawB64 = res.data.raw;
           if (!rawB64) continue;
           const raw = decodeBase64url(rawB64);
           const parsed = parseRawEmail(raw);
           const h = parsed.headers;
           out.push({
-            id: res.data.id ?? ref.id,
-            threadId: res.data.threadId ?? ref.threadId ?? res.data.id ?? ref.id,
+            id: res.data.id ?? ref.id!,
+            threadId: res.data.threadId ?? ref.threadId ?? res.data.id ?? ref.id!,
             from: h['From'] ?? '',
             to: (h['To'] ?? '')
               .split(',')
@@ -155,18 +164,29 @@ export function createGoogleApps(opts: GoogleAppsOptions): Pick<Apps, 'gmail' | 
       },
       async createFile({ parentId, name, mimeType, content, appProperties }) {
         const bytes = typeof content === 'string' ? Buffer.from(content, 'utf8') : Buffer.from(content);
+        // The file's type goes in the metadata and the bytes go up as octet-stream. Drive honors the
+        // metadata mimeType either way; Arga's Drive twin (verified 2026-09-13) silently stores an
+        // EMPTY body when the media part is message/rfc822 or application/json, which would file a
+        // 0-byte original and break the content hash.
         const res = await drive.files.create({
-          requestBody: { name, parents: [parentId], appProperties },
-          media: { mimeType, body: Readable.from(bytes) },
+          requestBody: { name, mimeType, parents: [parentId], appProperties },
+          media: { mimeType: 'application/octet-stream', body: Readable.from(bytes) },
           fields: DRIVE_FILE_FIELDS,
-        });
+        }, mediaOptions);
         const mapped = mapDriveFile(res.data);
         if (!mapped.sha256) mapped.sha256 = sha256(bytes);
         return mapped;
       },
       async updateFileContent(fileId, content) {
         const bytes = typeof content === 'string' ? Buffer.from(content, 'utf8') : Buffer.from(content);
-        const res = await drive.files.update({ fileId, media: { body: Readable.from(bytes) }, fields: DRIVE_FILE_FIELDS });
+        // Name and type are sent back with the bytes: Arga's Drive twin (verified 2026-09-13) resets a
+        // file to `Untitled` / application/octet-stream on a content-only update. The real Drive keeps
+        // them either way, so this costs one metadata read and changes nothing there.
+        const meta = await drive.files.get({ fileId, fields: 'name,mimeType' });
+        const res = await drive.files.update(
+          { fileId, requestBody: { name: meta.data.name ?? undefined, mimeType: meta.data.mimeType ?? undefined }, media: { mimeType: 'application/octet-stream', body: Readable.from(bytes) }, fields: DRIVE_FILE_FIELDS },
+          mediaOptions,
+        );
         const mapped = mapDriveFile(res.data);
         if (!mapped.sha256) mapped.sha256 = sha256(bytes);
         return mapped;

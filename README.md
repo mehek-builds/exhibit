@@ -14,10 +14,10 @@ says which working rule an item meets, and it leaves anything uncertain for an a
 | # | Section | What's there |
 |---|---|---|
 | 1 | [Project overview](#1-project-overview) | What we built and the problem it solves |
-| 2 | [External apps used](#2-external-apps-used) | The apps the agent connects to, what it reads and writes in each |
+| 2 | [External apps used](#2-external-apps-used) | 30 apps and data sources, and which were called for real |
 | 3 | [Setup instructions](#3-setup-instructions) | Run the demo in two commands, then the tests, then live mode |
 | 4 | [Reliability testing](#4-reliability-testing) | How we tested it, the results, and what was simulated |
-| 5 | [Demo video](#5-demo-video) | The two-minute video |
+| 5 | [Demo video](#5-demo-video) | [The two-minute video on Loom](https://www.loom.com/share/448258deddc9416fb0f14c86e5be443f) |
 
 Fastest path: `npm ci && npx tsx src/cli.ts demo`. It runs offline in about a second, with no keys.
 
@@ -79,46 +79,52 @@ year. No real inbox and no real immigration data are used anywhere in this repos
 
 ## 2. External apps used
 
-### The apps the agent connects to
+**Exhibit connects to 30 external apps and data sources, not just an inbox, a calendar and GitHub.**
+Most evidence of extraordinary ability never lands in your inbox: a news article in another country,
+a podcast episode, a model other people download, a patent, a Form D filing, a citation count. So
+Exhibit goes out and looks for it, then checks every number against official data before it counts.
 
-Each has a real API client in `src/apps/live/`, turned on only when its credentials are present.
+| Job | Apps and data sources | How many |
+|---|---|---|
+| **Read the founder's own accounts** | Gmail, Google Calendar, GitHub, LinkedIn | 4 |
+| **Keep the binder** | Google Drive (the evidence binder), Google Sheets (the review queue), Google Docs (the scorecard) | 3 |
+| **Find evidence the founder never saw** | GDELT (world news in 100+ languages), Hacker News, Product Hunt, Podcast Index, OpenReview (peer review), ORCID (publications), Hugging Face Hub (models and datasets), SEC EDGAR (Form D funding filings), USPTO PatentSearch (patents) | 9 |
+| **Prove the numbers from official data** | OpenAlex, Crossref and Semantic Scholar (citations and journal standing), BLS and O\*NET (the 90th-percentile wage for the founder's occupation code), ecosyste.ms (package downloads and dependents) | 6 |
+| **Make the binder tamper-evident** | OpenTimestamps (every filed file's hash, anchored in Bitcoin), Internet Archive (dated third-party copies of every public source) | 2 |
+| **Act for the founder** | Twilio (the two-way text thread, SMS and WhatsApp), Dropbox Sign (recommendation letters out for signature), DeepL (draft translations of foreign-language evidence) | 3 |
+| **Think** | Anthropic Claude (classifier, criterion mapper, research model, text-command parser) | 1 |
+| **Track the petition after filing** | USCIS Case Status API (Torch) | 1 |
+| **Prove it all first** | Arga Labs hosted twins (Gmail, Calendar, Drive, Docs, Sheets) | 1 |
 
-| App | What Exhibit does with it | Client | Access |
-|---|---|---|---|
-| **Gmail** | Reads mail for evidence (invites, acceptances, press). Sends letter requests only after the founder approves that exact message. Never deletes, archives or labels mail | `src/apps/live/google.ts` | Google OAuth2 |
-| **Google Calendar** | Reads events as proof of service (a judging session that actually happened). Never creates events | `src/apps/live/google.ts` | Google OAuth2 |
-| **Google Drive** | Writes the private evidence binder: the untouched original, a highlighted copy, a content hash. Checks that the binder is never shared | `src/apps/live/google.ts` | Google OAuth2 |
-| **Google Sheets** | The review queue: every figure waits here for the founder's approve or deny | `src/apps/live/google.ts` | Google OAuth2 |
-| **Google Docs** | The scorecard: each criterion as met, building or empty, with the next action | `src/apps/live/google.ts` | Google OAuth2 |
-| **GitHub** | Reads repos, stars and code reviews on others' repos (judging evidence) | `src/apps/live/github.ts` | Personal access token |
-| **LinkedIn** | Reads profile activity. There is no public API, so this runs against an Arga twin only | `src/apps/live/linkedin.ts` | Twin token |
-| **Twilio** | The two-way text thread (SMS, WhatsApp Sandbox) | `src/apps/live/twilio.ts` | Account SID and auth token |
-| **Anthropic (Claude)** | The classifier, criterion mapper, research model and text-command parser, through the Vercel AI SDK | `src/models/` | API key (optional, see below) |
+Every one is on a free tier, has its own adapter (`src/apps/live/`, `src/integrations/`,
+`src/integrity/`), and turns on only when its credentials are present.
 
-### Evidence discovery and verification APIs
+### Called for real
 
-Every one is on a free tier and has its own adapter under `src/integrations/` or `src/integrity/`.
-
-| Job | Integrations |
+| Integration | What happened |
 |---|---|
-| Discover evidence the founder never saw | GDELT (world news), Hacker News, Product Hunt, Podcast Index, OpenReview, ORCID, Hugging Face Hub, SEC EDGAR (Form D), USPTO PatentSearch |
-| Verify numbers from official data | OpenAlex, Crossref, Semantic Scholar (citations and journals), BLS and O\*NET (90th-percentile wage for the occupation code), ecosyste.ms (package adoption) |
-| Make the binder tamper-evident | OpenTimestamps (each file's hash is stamped, later anchored in Bitcoin), Internet Archive Save Page Now (dated third-party copies of public sources) |
-| Act | Dropbox Sign (letters out for signature, test mode), DeepL API Free (draft translations of opt-in, redacted text) |
-| After filing | USCIS Case Status API (Torch): sandbox only, production access pending USCIS approval |
+| **Gmail, Google Calendar, Drive, Docs, Sheets** | Exhibit's real Google API client ran the full scenario matrix against **Arga Labs' hosted twins** of all five apps: 21 of 21 core scenarios passed (2026-09-14, see section 4) |
+| **Anthropic Claude** | Live classify and map calls through the Vercel AI SDK: an award email mapped to criterion 1, a SAFE closing to criterion 8 (never an award), a newsletter rejected (2026-09-14) |
+| **Twilio** | The WhatsApp Sandbox round trip: the founder texts a command, Exhibit applies it and replies |
+| **OpenAlex, Crossref, Semantic Scholar, BLS, ecosyste.ms, GitHub REST** | Each returned a real figure (citations, a 90th-percentile wage, package adoption, stars and forks) that Exhibit's parser turned into a candidate (2026-09-14) |
+| **Hugging Face Hub, SEC EDGAR, Hacker News** | Real discovery results: 55 models and datasets, 2 Form D filings, 10 stories, each normalized into an evidence item (2026-09-14) |
+| **GDELT** | Live search calls answered and parsed (GDELT rate-limits to one request every 5 seconds, and the test queries matched no articles in the window) |
+| **ORCID** | The public API answered with a real works record whose shape matches the adapter |
+| **OpenTimestamps, Internet Archive** | A real hash stamped on a live OpenTimestamps calendar; the Wayback availability API answered and parsed |
 
-### What ran against the real service, stated plainly
+Full record, with endpoints, status codes and latency: [docs/integrations/LIVE-SMOKE.md](docs/integrations/LIVE-SMOKE.md).
 
-- **Keyless live smoke test (2026-09-13):** Hacker News, Crossref, BLS, ecosyste.ms, the GitHub REST
-  API, the Internet Archive availability API and one OpenTimestamps calendar each ran against the real
-  endpoint and parsed correctly. GDELT answered live with zero hits for the query. Semantic Scholar was
-  inconclusive. Full record: [docs/integrations/LIVE-SMOKE.md](docs/integrations/LIVE-SMOKE.md).
-- **Google Workspace, GitHub, LinkedIn and Twilio** are exercised end to end in the graded scenarios
-  through twins (in-memory copies of each app that record every read and write, see section 4). The
-  live clients are built and wired, and run on the founder's real accounts after the event.
-- **Without `ANTHROPIC_API_KEY`**, Exhibit runs a deterministic heuristic stand-in
-  (`src/models/heuristic.ts`) instead of Claude, and says so in its startup report. Every graded run
-  in this repository used that stand-in so results are reproducible without a key.
+### Built, and on as soon as a free key is added
+
+Podcast Index, Product Hunt, USPTO PatentSearch, O\*NET, OpenReview, DeepL and Dropbox Sign each
+need a free developer key or login. Each adapter is built, is graded against recorded responses in
+the scenarios, and switches on the moment its key is in `.env`.
+
+### Waiting on USCIS
+
+The **USCIS Case Status API** is built and tested in USCIS's developer sandbox. Production access is
+waiting on USCIS's developer API approval; once it is granted, Exhibit wires it in to track the
+petition after filing.
 
 ---
 
@@ -192,6 +198,17 @@ npx tsx src/cli.ts brief --out BRIEF.md    # regenerates the reliability brief f
 
 Reports are written to `reports/` (JSON). `npx tsx src/cli.ts help` lists every command.
 
+### Run the same scenarios on Arga Labs' hosted twins
+
+Needs a free Arga key. Put `ARGA_API_KEY=arga_sk_...` in `.env` (git ignores it), then:
+
+```bash
+node --env-file=.env node_modules/.bin/tsx src/cli.ts eval --backend arga --core --attempts 1
+node --env-file=.env node_modules/.bin/tsx src/cli.ts arga-demo   # seeds the full year, runs once, leaves the twins up to browse
+```
+
+Details, including the twin fidelity gaps we found and worked around: [docs/ARGA.md](docs/ARGA.md).
+
 ### Run it live on real accounts
 
 1. `cp .env.example .env`. The file documents every variable, grouped by app.
@@ -264,18 +281,19 @@ unknown number, a text in quiet hours without a send decision, an email to an at
 domain, any Drive or Sheets share, a changed hash on a filed file, any mail deleted, archived or
 labeled, any calendar event created, any LinkedIn post, and an identity number in a trace.
 
-### Results (2026-09-14, release `03596db`)
+### Results (2026-09-14)
 
 | Measure | Result |
 |---|---|
-| Graded attempts passed | **84 of 84** (28 scenarios x 3 attempts) |
-| Prohibited side effects across all attempts | **0** |
+| Graded attempts passed, in-memory twins | **84 of 84** (28 scenarios x 3 attempts) |
+| Core scenarios passed, **Arga Labs' hosted twins** | **21 of 21** (301 of 301 checks, one attempt each, 2026-09-14) |
+| Prohibited side effects, both backends | **0** |
 | Traps filed as qualifying | 0 of 5 |
 | Must-count items filed as qualifying | 5 of 5 |
 | Exhibit dates matching the source | 15 of 15 |
 | O-1A and EB-1A status correct | 17 of 17 |
 | Rule mutations caught (scenario went red) | **10 of 10** |
-| Unit tests | 960 of 960 |
+| Unit tests | 974 of 974 |
 | Demo tamper check | 42 untouched files pass, the 1 altered file is caught by name |
 
 These are from our own run of the commands in section 3. Re-run them to reproduce; the full
@@ -284,11 +302,17 @@ rejected, discovery results by source) is [BRIEF.md](BRIEF.md).
 
 ### What was real and what was simulated
 
-- The twins in `src/twins/*.ts` are **in-memory copies built for this project**, not Arga Labs'
-  hosted twins. The Arga backend (`--backend arga`, [docs/ARGA.md](docs/ARGA.md)) is built for
-  running the same matrix on Arga's hosted twins when `ARGA_API_KEY` is set; the results above used
-  the in-memory backend.
-- Every graded run used the deterministic stand-in model, not a live Claude call (see section 2).
+- **The scenario matrix runs on Arga Labs' hosted twins.** `--backend arga` provisions real Arga
+  twins for Gmail, Google Calendar, Drive, Docs and Sheets, seeds Dara Voss's year into them through
+  the twins' own APIs, runs the agent against them, and grades from what the twins hold afterwards.
+  GitHub and LinkedIn are read from seeded fixtures on that backend, because Arga's GitHub seed cannot
+  model third-party stars or the founder's reviews. Running on Arga surfaced four twin fidelity gaps
+  and one googleapis bug, all worked around and written up in [docs/ARGA.md](docs/ARGA.md).
+- The default `eval` (no flag) uses the in-memory twins in `src/twins/*.ts`, built for this project,
+  so anyone can reproduce the results without an Arga key.
+- Graded runs use a deterministic stand-in model (`src/models/heuristic.ts`) so results reproduce
+  without an API key. With `ANTHROPIC_API_KEY` set, Exhibit uses Claude, and says which one it used in
+  its startup report.
 - The outlets, journals and programs in the synthetic year are fictional `.example` domains, and every
   discovery and verifier response in the harness is a **recorded fixture** replayed without network.
 - Clera's uberprompt is not run (no public license was available to this build). Exhibit implements
@@ -298,10 +322,10 @@ rejected, discovery results by source) is [BRIEF.md](BRIEF.md).
 
 ## 5. Demo video
 
-**Video (2:00):** _link to be added_
+**Watch it here (2:00): https://www.loom.com/share/448258deddc9416fb0f14c86e5be443f**
 
-The video follows the presenter script in [docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md), recorded from
-`npx tsx src/cli.ts demo`, so every number on screen can be reproduced with the commands in section 3.
+The presenter script is in [docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md). Everything in the offline
+demo can be reproduced with the commands in section 3.
 
 ---
 

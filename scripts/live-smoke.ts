@@ -4,7 +4,7 @@
 //
 // Run: npx tsx scripts/live-smoke.ts
 
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { FetchTransport } from '../src/integrations/types.js';
 import type { ExhibitRecord, FounderProfile, SourceRef } from '../src/types.js';
@@ -15,6 +15,9 @@ import { createEcosystemsAdapter } from '../src/integrations/ecosystems.js';
 import { createPlatformStatsAdapter } from '../src/integrations/platformstats.js';
 import { createBlsAdapter } from '../src/integrations/bls.js';
 import { createSemanticScholarAdapter } from '../src/integrations/semanticscholar.js';
+import { createOpenAlexAdapter } from '../src/integrations/openalex.js';
+import { createHuggingFaceAdapter } from '../src/integrations/huggingface.js';
+import { createEdgarAdapter } from '../src/integrations/edgar.js';
 import { archivePage } from '../src/integrity/archive.js';
 import { stampDigest } from '../src/integrity/opentimestamps.js';
 
@@ -211,6 +214,47 @@ async function run() {
     await sleep(2100);
   }
 
+  // --- OpenAlex (verify): citation count for a well-cited public DOI ---
+  if (shouldRun('openalex')) {
+    const adapter = createOpenAlexAdapter({ transport, mailto: 'smoke-test@example.com' });
+    const req = { exhibit: fakeExhibit([{ app: 'discovery', id: 'x', url: `https://doi.org/${DOI}` }]), criterion: 6 as const, profile: fakeProfile };
+    const { value, ms, err } = await timed(() => adapter.figures(req));
+    if (err) {
+      results.push({ service: 'openalex', endpoint: 'api.openalex.org/works/doi:{doi}', status: null, parseOk: null, latencyMs: ms, error: err });
+    } else {
+      results.push({ service: 'openalex', endpoint: 'api.openalex.org/works/doi:{doi}', status: value!.errors.length ? null : 200, parseOk: value!.errors.length === 0 && value!.candidates.length > 0, counts: { candidates: value!.candidates.length }, latencyMs: ms, error: value!.errors.join('; ') || undefined });
+    }
+    await sleep(2100);
+  }
+
+  // --- Hugging Face Hub (discover): models and datasets authored by a public org handle, no token ---
+  if (shouldRun('huggingface')) {
+    const adapter = createHuggingFaceAdapter({ transport });
+    const { value, ms, err } = await timed(() =>
+      adapter.discover({ founderName: 'Hugging Face', aliases: [], company: 'Hugging Face', companyDomain: 'huggingface.co', handles: ['openai'], coauthors: [], since: '2020-01-01T00:00:00Z' }),
+    );
+    if (err) {
+      results.push({ service: 'huggingface', endpoint: 'huggingface.co/api/{models,datasets}?author=', status: null, parseOk: null, latencyMs: ms, error: err });
+    } else {
+      results.push({ service: 'huggingface', endpoint: 'huggingface.co/api/{models,datasets}?author=', status: value!.errors.length ? null : 200, parseOk: value!.errors.length === 0 && value!.items.length > 0, counts: { items: value!.items.length }, latencyMs: ms, error: value!.errors.join('; ') || undefined });
+    }
+    await sleep(2100);
+  }
+
+  // --- SEC EDGAR full-text search (discover): Form D filings for a public company name ---
+  if (shouldRun('edgar')) {
+    const adapter = createEdgarAdapter({ transport, userAgent: 'Exhibit live smoke test smoke-test@example.com' });
+    const { value, ms, err } = await timed(() =>
+      adapter.discover({ founderName: 'Anthropic', aliases: [], company: 'Anthropic, PBC', companyDomain: 'anthropic.com', handles: [], coauthors: [], since: '2020-01-01T00:00:00Z' }),
+    );
+    if (err) {
+      results.push({ service: 'edgar', endpoint: 'efts.sec.gov/LATEST/search-index?forms=D', status: null, parseOk: null, latencyMs: ms, error: err });
+    } else {
+      results.push({ service: 'edgar', endpoint: 'efts.sec.gov/LATEST/search-index?forms=D', status: value!.errors.length ? null : 200, parseOk: value!.errors.length === 0 && value!.items.length > 0, counts: { items: value!.items.length }, latencyMs: ms, error: value!.errors.join('; ') || undefined });
+    }
+    await sleep(2100);
+  }
+
   // --- Internet Archive availability API only (never Save Page Now, which needs keys) ---
   if (shouldRun('archive')) {
     const { value, ms, err } = await timed(() =>
@@ -250,6 +294,7 @@ async function run() {
   }
 
   const report = { ranAt: new Date().toISOString(), results };
+  mkdirSync(new URL('../reports/', import.meta.url), { recursive: true });
   writeFileSync(new URL('../reports/live-smoke.json', import.meta.url), JSON.stringify(report, null, 2));
 
   console.log('\nservice'.padEnd(24) + 'status'.padEnd(8) + 'parseOk'.padEnd(9) + 'latencyMs'.padEnd(11) + 'note');
