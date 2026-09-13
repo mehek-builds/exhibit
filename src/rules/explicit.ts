@@ -86,6 +86,46 @@ function isNegatedBefore(sentence: string, index: number): boolean {
   return words.length <= 3;
 }
 
+/** Who a pay sentence's money belongs to (G1/G2, constraint 4): only the founder's own pay counts. */
+export type PayRecipient = 'founder' | 'other' | 'unknown';
+
+/** Second-person / explicit-founder language: "you", "your", "the founder". */
+const FOUNDER_PRONOUN_RE = /\b(?:you|your|the\s+founder)\b/i;
+
+/**
+ * Nouns that attribute pay or a contract to someone other than the founder: a new hire, an
+ * employee, an engineer, a candidate, a contractor, a team member, staff, an advisor, an intern,
+ * "our first" (hire/engineer/...), or a co-founder (who isn't necessarily the founder herself).
+ */
+const OTHER_PARTY_RE = /\b(?:new\s+)?hires?\b|\bemployees?\b|\bengineers?\b|\bcandidates?\b|\bcontractors?\b|\bteam\s+members?\b|\bstaff\b|\badvisors?\b|\binterns?\b|\bour\s+first\b|\bco-?founders?\b/i;
+
+/**
+ * True when `sentence` mentions any part of `founderName` (first or last name/alias token, 2+
+ * letters) as a whole word.
+ */
+function mentionsFounderName(sentence: string, founderName?: string): boolean {
+  if (!founderName) return false;
+  for (const part of founderName.trim().split(/\s+/)) {
+    if (part.length < 2) continue;
+    const escaped = part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (new RegExp(`\\b${escaped}\\b`, 'i').test(sentence)) return true;
+  }
+  return false;
+}
+
+/**
+ * Whose pay/contract `sentence` is about (G1/G2, constraint 4): 'founder' when it addresses or
+ * names the founder ("you"/"your", "the founder", or her name); 'other' when it attributes the
+ * pay or contract to a third party (a new hire, an employee, "our first", a co-founder, ...);
+ * 'unknown' otherwise -- no signal either way.
+ */
+export function payRecipient(sentence: string, founderName?: string): PayRecipient {
+  if (FOUNDER_PRONOUN_RE.test(sentence)) return 'founder';
+  if (mentionsFounderName(sentence, founderName)) return 'founder';
+  if (OTHER_PARTY_RE.test(sentence)) return 'other';
+  return 'unknown';
+}
+
 /**
  * True when an equity/stock/option grant in `sentence` is addressed to a person -- "you"/"her"/
  * "him"/"the founder", the founder's own name (if passed), or a leading "<Name> was granted ..."
@@ -113,6 +153,9 @@ function equityGrantToPerson(sentence: string, founderName?: string): boolean {
  * Strict by design (constraint 4, R1): every one of these narrows the match, never widens it.
  */
 export function strongPaySentence(sentence: string, founderName?: string): boolean {
+  // G2: pay attributed to someone other than the founder (a new hire, an employee, an engineer,
+  // ...) is never her own remuneration, no matter how clean the amount/term pairing looks.
+  if (payRecipient(sentence, founderName) === 'other') return false;
   if (BUSINESS_MONEY_RE.test(sentence)) return false;
 
   const termMatches: RegExpExecArray[] = [];
@@ -139,27 +182,41 @@ export function strongPaySentence(sentence: string, founderName?: string): boole
 }
 
 /**
+ * Common abbreviations that end in a period but never end a sentence (G2). Matched case-
+ * insensitively on a word boundary; every internal `.` is masked before splitting so a multi-dot
+ * abbreviation like "U.S." never contributes a split, then unmasked again per sentence.
+ */
+const ABBREV_RE = /\b(?:U\.S\.|U\.K\.|e\.g\.|i\.e\.|vs\.|Inc\.|Ltd\.|Corp\.|Dr\.|Mr\.|Ms\.|Mrs\.|St\.|No\.|approx\.|est\.)/gi;
+const ABBREV_SENTINEL = '';
+
+/**
  * Splits `text` into sentences on `.`, `!`, `?`, `;` and newlines, but never inside a decimal
- * amount ("$1.5M", "0.5%") -- a `.` flanked by digits on both sides is not a sentence break.
+ * amount ("$1.5M", "0.5%") -- a `.` flanked by digits on both sides is not a sentence break --
+ * and never right after a common abbreviation ("U.S.", "e.g.", "Inc.", ...; G2).
  */
 export function splitSentences(text: string): string[] {
+  // Mask abbreviation periods with a same-length sentinel so string offsets/lengths are
+  // unchanged, then unmask per output sentence.
+  const masked = text.replace(ABBREV_RE, (m) => m.replace(/\./g, ABBREV_SENTINEL));
   const sentences: string[] = [];
   let start = 0;
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i];
+  for (let i = 0; i < masked.length; i++) {
+    const c = masked[i];
     if (c === '\n' || c === '!' || c === '?' || c === ';') {
-      sentences.push(text.slice(start, i));
+      sentences.push(masked.slice(start, i));
       start = i + 1;
     } else if (c === '.') {
-      const prev = text[i - 1];
-      const next = text[i + 1];
+      const prev = masked[i - 1];
+      const next = masked[i + 1];
       if (prev && /\d/.test(prev) && next && /\d/.test(next)) continue; // decimal point
-      sentences.push(text.slice(start, i));
+      sentences.push(masked.slice(start, i));
       start = i + 1;
     }
   }
-  if (start < text.length) sentences.push(text.slice(start));
-  return sentences.map((s) => s.trim()).filter(Boolean);
+  if (start < masked.length) sentences.push(masked.slice(start));
+  return sentences
+    .map((s) => s.trim().replace(new RegExp(ABBREV_SENTINEL, 'g'), '.'))
+    .filter(Boolean);
 }
 
 /** Broad pay-ish vocabulary for the 'ambiguous' tier -- deliberately wide (constraint 4: real pay must never fall through to 'none'). */
@@ -264,9 +321,24 @@ const RULES: ExplicitRule[] = [
   },
   {
     id: 'D-equity-comparable',
-    apply(item) {
+    apply(item, _cls, profile) {
       const q = quoteFor(fullText(item), PATTERNS.equity);
       if (!q) return null;
+      // G1: a grant or plan named for someone else (an employee option pool, the sales team, ...)
+      // is not the founder's own equity, even sitting next to revenue in the same update. Scoped
+      // to the item's own body, not its subject line (a subject like "Offer letter: Staff
+      // Engineer" carries no recipient signal of its own and must never blank out the body's).
+      const recipient = payRecipient(item.text, profile.name);
+      if (recipient !== 'founder') {
+        return mapping(
+          [8],
+          'needs_attorney',
+          'D-equity-comparable',
+          'The grant does not clearly name the founder as the recipient; an attorney decides whether it is her remuneration.',
+          q,
+          { eb1a_status: 'needs_attorney' },
+        );
+      }
       return mapping([8], 'qualifying', 'D-equity-comparable', 'Founder equity in place of salary counts toward #8 as comparable evidence (5.5).', q, {
         comparable_for: [8],
       });
@@ -274,10 +346,25 @@ const RULES: ExplicitRule[] = [
   },
   {
     id: 'X-future-pay',
-    apply(item) {
+    apply(item, _cls, profile) {
       const text = fullText(item);
       const q = quoteFor(text, PATTERNS.futurePay);
       if (!q || !PATTERNS.futurePayTiming.test(text)) return null;
+      // G1: an employment/consulting agreement or offer letter for someone else's hire is not the
+      // founder's own future pay, even next to revenue figures in the same update. Scoped to the
+      // item's own body, not its subject line (a subject like "Offer letter: Staff Engineer"
+      // carries no recipient signal of its own and must never blank out the body's).
+      const recipient = payRecipient(item.text, profile.name);
+      if (recipient !== 'founder') {
+        return mapping(
+          [8],
+          'needs_attorney',
+          'X-future-pay',
+          'The agreement or offer letter does not clearly name the founder as the recipient; an attorney decides whether it is her remuneration.',
+          q,
+          { eb1a_status: 'needs_attorney' },
+        );
+      }
       return mapping([8], 'qualifying', 'X-future-pay', 'A signed contract for future pay counts for O-1A #8 ("will command"); EB-1A needs pay already earned, so it counts once paid (5.2).', q, {
         eb1a_status: 'building',
       });
@@ -453,7 +540,16 @@ export function enforceInvariants(m: Mapping, item: RedactedItem, profile: Found
     // Check the model's own cited quote first -- the exact sentence it read as pay evidence. If
     // the quote itself isn't strong, the model may have cited the wrong sentence even though the
     // text elsewhere is genuinely strong; either way that is an attorney call, not a silent keep.
-    const quoteStrong = strongPaySentence(out.quote, profile.name);
+    let quoteStrong = strongPaySentence(out.quote, profile.name);
+    // G2 (model path): a strong-looking quote must also be the founder's own pay. With revenue in the
+    // item, a quote like "salary of $150k" that names nobody could be anyone's salary, so the quote
+    // or the sentence it sits in has to address or name the founder. Rule mappings (X-future-pay,
+    // D-equity-comparable) already gate the recipient on the item body themselves.
+    if (quoteStrong && out.decided_by === 'model') {
+      const host = splitSentences(text).find((s) => s.includes(out.quote.trim())) ?? out.quote;
+      const recipient = payRecipient(out.quote, profile.name) === 'founder' ? 'founder' : payRecipient(host, profile.name);
+      if (recipient !== 'founder') quoteStrong = false;
+    }
     if (!quoteStrong) {
       const evidence = payEvidence(text, profile.name);
       if (evidence === 'none') {

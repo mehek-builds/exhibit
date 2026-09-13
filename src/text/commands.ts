@@ -162,6 +162,7 @@ function parseSegment(segment: string, ctx: ParseContext, fullText: string): Par
   }
   if (/^yes\b/.test(lower)) {
     if (!AFFIRM_RE.test(fullText) || NEGATION_RE.test(fullText) || hasTrailingHedgePunctuation(fullText)) return unclear(`I wasn't able to confirm everything in "${fullText.trim()}". Could you rephrase it as separate short commands (e.g. "approve 1", "deny 2 <reason>", "pause until <date>")?`);
+    if (PARTIAL_SELECTION_RE.test(fullText)) return unclear('To approve only some figures, reply approve <numbers>; to approve all, reply yes.');
     return { kind: 'yes' };
   }
   return unclear(`I didn't understand "${segment}".`);
@@ -259,6 +260,9 @@ export class AnthropicCommandParser implements CommandParser {
 
     for (const c of deduped) {
       if (!isGrounded(c, text, ctx.now)) {
+        if (c.kind === 'yes' && PARTIAL_SELECTION_RE.test(text)) {
+          return [unclear('To approve only some figures, reply approve <numbers>; to approve all, reply yes.')];
+        }
         return [unclear(`I wasn't able to confirm everything in "${text.trim()}". Could you rephrase it as separate short commands (e.g. "approve 1", "deny 2 <reason>", "pause until <date>")?`)];
       }
     }
@@ -285,6 +289,13 @@ const AFFIRM_RE = /\b(yes|y|yep|yeah|confirm(?:ed)?|ok(?:ay)?|sure|go\s+ahead|do
 // Hesitation, deferral or reversal: any of these anywhere in the text blocks a `yes` grounding,
 // even alongside an affirmative token (F4: "sure, later" is not an unhedged yes).
 const NEGATION_RE = /\b(no|not|don'?t|wait|hold\s+on|hold|stop|cancel|never\s?mind|nvm|later|think\s+about\s+it|let\s+me\s+think|maybe|perhaps|unsure|hmm+|actually|nah|nope|on\s+second\s+thought)\b/i;
+
+// G3 (constraint 13, E53): a `yes` that carries an exception, limit or partial selection ("yes
+// except the second one", "yes but only 1 and 2") must not confirm the whole staged approve-all /
+// multi-figure set -- only an unhedged, unqualified yes may ground. Any exception/limit keyword,
+// or any digit/ordinal (which signals the reply is picking out specific figures rather than
+// accepting the staged set), blocks the grounding and falls back to the clarifying question.
+export const PARTIAL_SELECTION_RE = /\b(except|excluding|exclude|but|only|just|other\s+than|apart\s+from|not\s+the|without|minus|skip|leave\s+out|drop|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\b|\d/i;
 
 /** Trailing "..." or "?" on an otherwise affirmative text ("ok?", "sure...") reads as a hedge, not
  * an unhedged confirmation. */
@@ -316,7 +327,7 @@ const GROUNDED_KINDS = new Set<ParsedCommand['kind']>(['approve', 'deny', 'pause
 function isGrounded(cmd: ParsedCommand, text: string, now: Date): boolean {
   if (!GROUNDED_KINDS.has(cmd.kind)) return true;
 
-  if (cmd.kind === 'yes') return AFFIRM_RE.test(text) && !NEGATION_RE.test(text) && !hasTrailingHedgePunctuation(text);
+  if (cmd.kind === 'yes') return AFFIRM_RE.test(text) && !NEGATION_RE.test(text) && !hasTrailingHedgePunctuation(text) && !PARTIAL_SELECTION_RE.test(text);
   if (cmd.kind === 'start' || cmd.kind === 'resume') return START_INTENT_RE.test(text) && !STOP_INTENT_RE.test(text);
 
   const re = KIND_SYNONYM_RE[cmd.kind];

@@ -728,3 +728,153 @@ describe('F4: yes only grounds on an unhedged affirmative', () => {
     expect(outs.at(-1)!.detail.kind).not.toBe('clarify');
   });
 });
+
+describe('G3: a yes with an exception, limit or partial selection must not confirm the staged set', () => {
+  const blockedPhrases = [
+    'yes, but hold off on 2',
+    'yes except the second one',
+    'yes, just not 3',
+    'yes but only 1 and 2',
+    'ok but skip 3',
+    'yes except 3',
+    'yes but not the first',
+    'yes, just 2',
+    'yes skip figure 2',
+  ];
+
+  const allowedPhrases = [
+    'yes',
+    'yes please',
+    'ok go',
+    'yes approve all',
+    'yep, do it',
+    'confirm',
+    'sure',
+    'go ahead',
+    'yes, approve them all now',
+    'ok, go ahead',
+    'yes — all of them',
+  ];
+
+  describe('mocked-Anthropic parser', () => {
+    for (const text of blockedPhrases) {
+      it(`"${text}" gets a clarifying question, not a grounded yes`, async () => {
+        vi.resetModules();
+        vi.doMock('@ai-sdk/anthropic', () => ({
+          createAnthropic: () => () => mockModel(() => textResult({ commands: [{ kind: 'yes' }] })),
+        }));
+        const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+        const parser = new MockedParser('unused-key', graph);
+        const out = await parser.parse(text, { now: NOW, pendingFigureNumbers: [1, 2, 3] });
+        expect(out).toHaveLength(1);
+        expect(out[0]!.kind).toBe('unclear');
+        vi.doUnmock('@ai-sdk/anthropic');
+        vi.resetModules();
+      });
+    }
+
+    for (const text of allowedPhrases) {
+      it(`"${text}" still grounds a yes`, async () => {
+        vi.resetModules();
+        vi.doMock('@ai-sdk/anthropic', () => ({
+          createAnthropic: () => () => mockModel(() => textResult({ commands: [{ kind: 'yes' }] })),
+        }));
+        const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+        const parser = new MockedParser('unused-key', graph);
+        const out = await parser.parse(text, { now: NOW, pendingFigureNumbers: [1, 2, 3] });
+        expect(out).toEqual([{ kind: 'yes' }]);
+        vi.doUnmock('@ai-sdk/anthropic');
+        vi.resetModules();
+      });
+    }
+  });
+
+  describe('HeuristicCommandParser yes path', () => {
+    // The heuristic parser only enters the yes branch on the literal keyword "yes" (KEYWORD_RE
+    // has no synonyms), so only phrases built around that literal word exercise it end to end.
+    const parser = new HeuristicCommandParser();
+    const heuristicAllowed = allowedPhrases.filter((t) => /\byes\b/i.test(t));
+
+    for (const text of blockedPhrases) {
+      it(`"${text}" gets a clarifying question, not a grounded yes`, async () => {
+        const out = await parser.parse(text, { now: NOW, pendingFigureNumbers: [1, 2, 3] });
+        expect(out).toHaveLength(1);
+        expect(out[0]!.kind).toBe('unclear');
+      });
+    }
+
+    for (const text of heuristicAllowed) {
+      it(`"${text}" still grounds a yes`, async () => {
+        const out = await parser.parse(text, { now: NOW, pendingFigureNumbers: [1, 2, 3] });
+        // "approve all" inside the text is itself a second, separately-segmented command for the
+        // heuristic parser (KEYWORD_RE splits on every keyword); both must be grounded and present.
+        if (/\bapprove\s+all\b|\bapprove\s+them\s+all\b/i.test(text)) {
+          expect(out[0]).toEqual({ kind: 'yes' });
+          expect(out.some((c) => c.kind === 'approve')).toBe(true);
+        } else {
+          expect(out).toEqual([{ kind: 'yes' }]);
+        }
+      });
+    }
+  });
+
+  it('end to end: a staged approve-all is NOT applied for "yes except the second one"', async () => {
+    const h = await setup();
+    const fig1 = figureRow({ fig_id: 'FIG-001', exhibit_id: 'EX-3-001' });
+    const fig2 = figureRow({ fig_id: 'FIG-002', exhibit_id: 'EX-3-002' });
+    h.ledger.insertFigure(fig1);
+    h.ledger.insertFigure(fig2);
+    listFiguresText([fig1, fig2], h.ledger);
+    h.ledger.set('text_pending_confirm', JSON.stringify({ figureIds: ['FIG-001', 'FIG-002'], createdAt: h.ctx.now.toISOString() }));
+
+    const ext = createTextChannel({ parser: new HeuristicCommandParser() });
+    h.twilio.adminInbound(FOUNDER_PHONE, 'yes except the second one');
+    await ext.beforeClassify!(h.ctx);
+
+    expect(h.ledger.get('text_pending_confirm')).not.toBe('');
+    expect(h.ledger.figure('FIG-001')!.status).toBe('pending');
+    expect(h.ledger.figure('FIG-002')!.status).toBe('pending');
+    const [inEvent] = h.ledger.events({ kind: 'text_in' }).slice(-1);
+    expect(inEvent!.detail.action).not.toBe('applied');
+  });
+
+  it('end to end: a staged approve-all IS applied (grounded) for "yes — all of them"', async () => {
+    const h = await setup();
+    const fig1 = figureRow({ fig_id: 'FIG-001', exhibit_id: 'EX-3-001' });
+    h.ledger.insertFigure(fig1);
+    listFiguresText([fig1], h.ledger);
+    h.ledger.set('text_pending_confirm', JSON.stringify({ figureIds: ['FIG-001'], createdAt: h.ctx.now.toISOString() }));
+
+    const ext = createTextChannel({ parser: new HeuristicCommandParser() });
+    h.twilio.adminInbound(FOUNDER_PHONE, 'yes — all of them');
+    await ext.beforeClassify!(h.ctx);
+
+    expect(h.ledger.get('text_pending_confirm')).toBeFalsy();
+    const outs = h.ledger.events({ kind: 'text_out' });
+    expect(outs.at(-1)!.detail.kind).not.toBe('clarify');
+  });
+
+  it('end to end (channel.ts guard): a yes command reaching applyCommand for "yes but only 1 and 2" text is still refused', async () => {
+    const h = await setup();
+    const fig1 = figureRow({ fig_id: 'FIG-001', exhibit_id: 'EX-3-001' });
+    const fig2 = figureRow({ fig_id: 'FIG-002', exhibit_id: 'EX-3-002' });
+    h.ledger.insertFigure(fig1);
+    h.ledger.insertFigure(fig2);
+    listFiguresText([fig1, fig2], h.ledger);
+    h.ledger.set('text_pending_confirm', JSON.stringify({ figureIds: ['FIG-001', 'FIG-002'], createdAt: h.ctx.now.toISOString() }));
+
+    // Simulate a parser regression: the model/heuristic somehow still returns a bare `yes` for
+    // partial-selection text. channel.ts must refuse to apply the staged confirmation regardless.
+    const forcedYesParser = { name: 'forced-yes', parse: async () => [{ kind: 'yes' as const }] };
+    const ext = createTextChannel({ parser: forcedYesParser });
+
+    h.twilio.adminInbound(FOUNDER_PHONE, 'yes but only 1 and 2');
+    await ext.beforeClassify!(h.ctx);
+
+    expect(h.ledger.get('text_pending_confirm')).not.toBe('');
+    expect(h.ledger.figure('FIG-001')!.status).toBe('pending');
+    expect(h.ledger.figure('FIG-002')!.status).toBe('pending');
+    const outs = h.ledger.events({ kind: 'text_out' });
+    expect(outs.at(-1)!.detail.kind).toBe('clarify');
+  });
+});

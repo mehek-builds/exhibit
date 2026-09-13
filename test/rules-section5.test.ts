@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { applyExplicitRules, enforceInvariants, isPersonalPay, mapping, payEvidence } from '../src/rules/explicit.js';
+import { applyExplicitRules, enforceInvariants, isPersonalPay, mapping, payEvidence, splitSentences } from '../src/rules/explicit.js';
 import { buildScorecard } from '../src/binder/scorecard.js';
 import { Ledger } from '../src/ledger.js';
 import { mapping as mkMapping } from '../src/rules/explicit.js';
 import type { CandidateRow, FigureRow } from '../src/ledger.js';
 import type { ExhibitRecord, Mapping } from '../src/types.js';
-import { NOW } from '../harness/corpus.js';
+import { DARA, NOW } from '../harness/corpus.js';
 import { cls, PROFILE, redacted } from './helpers.js';
 
 // PRD 5.2 crosswalk exceptions, the T-revenue-not-pay three-tier redesign, and the 5.3 final-merits
@@ -552,6 +552,152 @@ describe('payEvidence: a customer/user/install "base" next to revenue is never p
   it('still reads "base" glued to an amount as strong pay', () => {
     for (const s of ['Offer from Loomwork Inc. $190,000 base plus equity.', '$190,000 base, 0.5% equity.', 'Base salary $180,000.', 'Your base of $175,000 starts in March.']) {
       expect(payEvidence(s), s).toBe('strong');
+    }
+  });
+});
+
+// Round-5 review (pay5.mts), G1 + G2: constraint 4 requires the FOUNDER's own pay, never someone
+// else's contract or option pool next to revenue (G1, deterministic explicit-rule path), and
+// never a strong quote fragment whose sentence never says whose pay it is (G2, model path). Every
+// input below is verbatim from the review's evidence tables.
+describe('G1: explicit #8 rules require a founder recipient, not just the pattern', () => {
+  const neverQualifying: Array<[string, string]> = [
+    ['employment agreement with a named third-party hire', 'We signed an employment agreement with our first hire; her start date is October 1. ARR hit $2M.'],
+    ['consulting agreement with a named vendor', 'Investor update: our consulting agreement with Acme begins on May 1. MRR is $180k.'],
+    ['option grant pool for employees', 'Q3 update: ARR $3M. We refreshed the option grant pool for new employees.'],
+    ['equity grant plan for the sales team', 'Board approved the equity grant plan for the sales team. Revenue $5M.'],
+  ];
+  for (const [label, text] of neverQualifying) {
+    it(`never files #8 qualifying: ${label}`, () => {
+      const it_ = redacted({ app: 'gmail', id: `m-g1-${label.replace(/\s+/g, '-')}`, title: 'Update', text });
+      const m = applyExplicitRules(it_, cls({ kind: 'remuneration' }), PROFILE);
+      // Either the rule doesn't fire at all, or it fires but never as a qualifying #8.
+      if (m) {
+        expect(m.status, text).not.toBe('qualifying');
+        expect(m.criteria.includes(8) && m.status === 'qualifying', text).toBe(false);
+      }
+    });
+  }
+
+  it('a bare "Employment agreement with our first hire" (no timing phrase) never qualifies', () => {
+    const text = 'Employment agreement with our first hire';
+    const it_ = redacted({ app: 'gmail', id: 'm-g1-bare-hire', title: 'Update', text });
+    const m = applyExplicitRules(it_, cls({ kind: 'remuneration' }), PROFILE);
+    expect(m?.status).not.toBe('qualifying');
+  });
+
+  it('D-funding-remuneration (SAFE, S3) still qualifies verbatim from harness/corpus.ts', () => {
+    const text = 'Hi Dara,\n\nCongratulations on closing your round. The SAFE (simple agreement for future equity) for Loomwork, Inc. has closed with $750,000 from 6 investors at a $9M post-money valuation cap.\n\nView the closing documents in your dashboard.\n\nSafeHub';
+    const it_ = redacted({ app: 'gmail', id: 'm-safe', title: 'Congratulations! Your SAFE financing has closed', text });
+    const m = applyExplicitRules(it_, cls({ kind: 'remuneration' }), PROFILE);
+    expect(m?.rule_id).toBe('D-funding-remuneration');
+    expect(m?.status).toBe('qualifying');
+    expect(m?.criteria).toEqual([8]);
+  });
+
+  it('D-equity-comparable (founder stock purchase agreement, S4) still qualifies verbatim from harness/corpus.ts', () => {
+    const text = 'Dara Voss purchased 8,000,000 shares of common stock of Loomwork, Inc. under the Founder Stock Purchase Agreement dated October 1, 2025. The shares vest over four years.';
+    const it_ = redacted({ app: 'gmail', id: 'm-equity', title: 'Executed: Founder Stock Purchase Agreement', text });
+    const m = applyExplicitRules(it_, cls({ kind: 'remuneration' }), PROFILE);
+    expect(m?.rule_id).toBe('D-equity-comparable');
+    expect(m?.status).toBe('qualifying');
+    expect(m?.criteria).toEqual([8]);
+  });
+
+  it('X-future-pay (signed offer letter, S16) still qualifies verbatim from harness/scenarios.ts', () => {
+    const text = 'Dear Dara,\n\nWe are pleased to extend this offer letter for the role of Staff Engineer at Orbit Labs. You will be paid $310,000 base salary starting on January 4, 2027.\n\nOrbit Labs People Team';
+    const it_ = redacted({ app: 'gmail', id: 'm-offer', title: 'Offer letter: Staff Engineer', text });
+    const m = applyExplicitRules(it_, cls({ kind: 'remuneration' }), PROFILE);
+    expect(m?.rule_id).toBe('X-future-pay');
+    expect(m?.status).toBe('qualifying');
+    expect(m?.criteria).toEqual([8]);
+  });
+
+  it('DARA.name is "Dara Voss", matching the recipient checks above', () => {
+    expect(DARA.name).toBe('Dara Voss');
+  });
+});
+
+describe('G2: strongPaySentence requires a founder recipient; the splitter respects abbreviations', () => {
+  const neverStrong: Array<[string, string]> = [
+    ['someone else\'s salary, same sentence as the amount', 'We hired our first engineer at a $150,000 salary.'],
+    ['offer letter sent to a third party', 'We sent an offer letter to our first hire.'],
+    ['W-2 forms for employees generally', 'Our accountant filed W-2 forms for all 12 employees.'],
+    ["our first engineer's salary", "Our first engineer's salary is $150,000."],
+  ];
+  for (const [label, sentence] of neverStrong) {
+    it(`is never strong: ${label}`, () => {
+      expect(payEvidence(sentence), sentence).not.toBe('strong');
+    });
+  }
+
+  it('"Your base salary will be $190,000" is strong', () => {
+    expect(payEvidence('Your base salary will be $190,000.')).toBe('strong');
+  });
+
+  it('"Dara Voss will receive a salary of $180,000" is strong', () => {
+    expect(payEvidence('Dara Voss will receive a salary of $180,000.')).toBe('strong');
+  });
+
+  it('"our first engineer\'s salary is $150,000" is never strong', () => {
+    expect(payEvidence("our first engineer's salary is $150,000.")).not.toBe('strong');
+  });
+
+  it('"Employment agreement with our first hire" never qualifies #8', () => {
+    const text = 'Employment agreement with our first hire';
+    const it_ = redacted({ app: 'gmail', id: 'm-g2-bare-hire', title: 'Update', text });
+    const m = applyExplicitRules(it_, cls({ kind: 'remuneration' }), PROFILE);
+    expect(m?.status).not.toBe('qualifying');
+  });
+
+  it('"The U.S. offer letter sets your base salary at $190,000." is strong -- the splitter must not break on "U.S."', () => {
+    const text = 'The U.S. offer letter sets your base salary at $190,000.';
+    expect(splitSentences(text)).toEqual([text.replace(/\.$/, '')]);
+    expect(payEvidence(text)).toBe('strong');
+  });
+
+  it('splitter does not split on "e.g." or "vs." either', () => {
+    expect(splitSentences('Comp, e.g. salary, is discussed quarterly.')).toEqual(['Comp, e.g. salary, is discussed quarterly']);
+    expect(splitSentences('Revenue was $2.5M vs. salary of $150k last yr.')).toEqual(['Revenue was $2.5M vs. salary of $150k last yr']);
+  });
+
+  it('a model quote of someone else\'s pay sentence never survives enforceInvariants as qualifying #8', () => {
+    const cases: Array<[string, string]> = [
+      ['We hired our first engineer at a $150,000 salary.\nARR is now $3M.', 'We hired our first engineer at a $150,000 salary.'],
+      ['We sent an offer letter to our first hire.\nARR is $2M.', 'We sent an offer letter to our first hire.'],
+      ['Our accountant filed W-2 forms for all 12 employees.\nARR $4M.', 'Our accountant filed W-2 forms for all 12 employees.'],
+    ];
+    for (const [text, quote] of cases) {
+      const it_ = redacted({ app: 'gmail', id: `m-g2-${text.length}`, title: 'Update', text });
+      const modelMapping: Mapping = mapping([8], 'qualifying', 'M-model', 'model', quote, { decided_by: 'model' });
+      const out = enforceInvariants(modelMapping, it_, PROFILE);
+      expect(out.status, text).not.toBe('qualifying');
+    }
+  });
+});
+
+describe('G2 residual: a model quote that names nobody cannot keep #8 when revenue is present', () => {
+  it('downgrades an unattributed salary quote to needs_attorney, keeping the criterion', () => {
+    for (const [text, quote] of [
+      ['We compared offers vs. last year: salary of $150k last yr. ARR hit $2M.', 'salary of $150k last yr'],
+      ['Base salary $210,000. Company revenue was $4M ARR this quarter.', 'Base salary $210,000.'],
+    ] as const) {
+      const it_ = redacted({ app: 'gmail', id: `m-g2r-${text.length}`, title: 'Update', text });
+      const out = enforceInvariants(mapping([8], 'qualifying', 'M-model', 'model', quote, { decided_by: 'model' }), it_, PROFILE);
+      expect(out.status, text).toBe('needs_attorney');
+      expect(out.criteria, text).toContain(8);
+    }
+  });
+
+  it('keeps #8 qualifying when the quote or its sentence names the founder', () => {
+    const first = PROFILE.name.split(' ')[0]!;
+    for (const [text, quote] of [
+      ['Your base salary will be $190,000. Company ARR is $3M.', 'Your base salary will be $190,000.'],
+      [`${first} will receive a salary of $180,000 per year. Revenue was $2M.`, 'salary of $180,000 per year'],
+    ] as const) {
+      const it_ = redacted({ app: 'gmail', id: `m-g2f-${text.length}`, title: 'Offer', text });
+      const out = enforceInvariants(mapping([8], 'qualifying', 'M-model', 'model', quote, { decided_by: 'model' }), it_, PROFILE);
+      expect(out.status, text).toBe('qualifying');
     }
   });
 });

@@ -75,8 +75,13 @@ export async function classifyAndMap(item: SourceItem, redacted: RedactedItem, d
 
   const explicit = applyExplicitRules(redacted, cls, profile, deps.ruleOptions);
   if (explicit) {
-    trace.span('map.explicit_rule', { app: item.app, id: item.id }, { rule_id: explicit.rule_id, criteria: explicit.criteria, status: explicit.status });
-    return { cls, mapping: explicit, stage: 'done', hallucinations, modelCalls };
+    // G1: explicit #8 mappings pass through the same revenue/recipient backstop a model mapping
+    // does, so a detection mistake in an explicit rule can't silently outrun enforceInvariants
+    // (constraint 4). A no-op for rule families the backstop doesn't touch (funding/equity text
+    // exempts itself from the revenue check by design; those rules gate their own recipient above).
+    const enforced = enforceInvariants(explicit, redacted, profile, deps.ruleOptions);
+    trace.span('map.explicit_rule', { app: item.app, id: item.id }, { rule_id: enforced.rule_id, criteria: enforced.criteria, status: enforced.status });
+    return { cls, mapping: enforced, stage: 'done', hallucinations, modelCalls };
   }
 
   let raw;
