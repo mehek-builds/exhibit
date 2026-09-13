@@ -181,28 +181,70 @@ describe('the injection guard applies identically to both parsers', () => {
     vi.resetModules();
   });
 
-  it('the model can never return more commands than the text has command keywords for', async () => {
+  // Replaces a prior test that asserted the buggy keyword-count cap (a single "deny" keyword
+  // capped the model at one command, silently dropping a legitimate second deny/approve). That
+  // behavior was the confirmed bug: this test now proves multiple grounded commands for a single
+  // keyword survive intact.
+  it('one keyword can legitimately yield multiple grounded commands, and none are dropped', async () => {
     vi.resetModules();
     vi.doMock('@ai-sdk/anthropic', () => ({
       createAnthropic: () => () =>
         mockModel(
           textResult({
             commands: [
-              { kind: 'approve', figures: [1] },
-              { kind: 'deny', figure: 2, reason: 'x' },
-              { kind: 'stop' },
-              { kind: 'start' },
+              { kind: 'deny', figure: 2, reason: 'the 2019 rate' },
+              { kind: 'deny', figure: 4, reason: 'the 2019 rate' },
             ],
           }),
         ),
     }));
     const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
     const parser = new MockedParser('unused-key', graph);
-    // Only one keyword ("approve") appears in the text, so a model that hallucinates three extra
-    // commands must be truncated to at most that many.
+    const out = await parser.parse('deny 2 and 4, both are the 2019 rate', { now: NOW, pendingFigureNumbers: [2, 4] });
+    expect(out).toEqual([
+      { kind: 'deny', figure: 2, reason: 'the 2019 rate' },
+      { kind: 'deny', figure: 4, reason: 'the 2019 rate' },
+    ]);
+
+    vi.doUnmock('@ai-sdk/anthropic');
+    vi.resetModules();
+  });
+
+  it('a pause command does not crowd out a following approve command', async () => {
+    vi.resetModules();
+    vi.doMock('@ai-sdk/anthropic', () => ({
+      createAnthropic: () => () =>
+        mockModel(
+          textResult({
+            commands: [
+              { kind: 'pause', until: '2026-09-20' },
+              { kind: 'approve', figures: [3] },
+            ],
+          }),
+        ),
+    }));
+    const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+    const parser = new MockedParser('unused-key', graph);
+    const out = await parser.parse('traveling until the 20th, no asks. approve 3', { now: NOW, pendingFigureNumbers: [3] });
+    expect(out).toEqual([
+      { kind: 'pause', until: '2026-09-20' },
+      { kind: 'approve', figures: [3] },
+    ]);
+
+    vi.doUnmock('@ai-sdk/anthropic');
+    vi.resetModules();
+  });
+
+  it('a model output that invents a figure number not in the text leads to clarification with nothing applied', async () => {
+    vi.resetModules();
+    vi.doMock('@ai-sdk/anthropic', () => ({
+      createAnthropic: () => () => mockModel(() => textResult({ commands: [{ kind: 'approve', figures: [1, 9] }] })),
+    }));
+    const { AnthropicCommandParser: MockedParser } = await import('../src/text/commands.js');
+    const parser = new MockedParser('unused-key', graph);
     const out = await parser.parse('approve 1', { now: NOW, pendingFigureNumbers: [1] });
-    expect(out.length).toBeLessThanOrEqual(1);
-    for (const c of out) expect(() => CommandSchema.parse(c)).not.toThrow();
+    expect(out).toHaveLength(1);
+    expect(out[0]!.kind).toBe('unclear');
 
     vi.doUnmock('@ai-sdk/anthropic');
     vi.resetModules();
@@ -298,5 +340,64 @@ describe('live Twilio adapter self-throttles to the trial rate limit', () => {
     await api.send({ to: '+1', body: 'a' });
     await api.send({ to: '+1', body: 'b' });
     expect(sleepCalls).toEqual([3000]);
+  });
+
+  it('serializes concurrent sends so each one waits for the previous plus the interval', async () => {
+    let clock = 0;
+    const requestTimes: number[] = [];
+    const api = createTwilioApi({
+      accountSid: 'AC_test',
+      authToken: 'tok',
+      sender: '+15550009999',
+      minSendIntervalMs: 3000,
+      now: () => clock,
+      sleep: async (ms: number) => {
+        clock += ms;
+      },
+      transport: {
+        kind: 'fixture',
+        async request() {
+          requestTimes.push(clock);
+          return { status: 201, headers: {}, body: JSON.stringify({ sid: `SM${requestTimes.length}`, from: '+15550009999', to: '+1', body: 'x', direction: 'outbound', date_sent: null, date_created: '2026-09-13T00:00:00Z' }) };
+        },
+      },
+    });
+
+    await Promise.all([
+      api.send({ to: '+1', body: 'a' }),
+      api.send({ to: '+1', body: 'b' }),
+      api.send({ to: '+1', body: 'c' }),
+      api.send({ to: '+1', body: 'd' }),
+    ]);
+
+    expect(requestTimes).toEqual([0, 3000, 6000, 9000]);
+  });
+
+  it("a failing send doesn't block later sends", async () => {
+    let clock = 0;
+    let call = 0;
+    const api = createTwilioApi({
+      accountSid: 'AC_test',
+      authToken: 'tok',
+      sender: '+15550009999',
+      minSendIntervalMs: 3000,
+      now: () => clock,
+      sleep: async (ms: number) => {
+        clock += ms;
+      },
+      transport: {
+        kind: 'fixture',
+        async request() {
+          call += 1;
+          if (call === 1) return { status: 500, headers: {}, body: 'boom' };
+          return { status: 201, headers: {}, body: JSON.stringify({ sid: 'SM2', from: '+15550009999', to: '+1', body: 'x', direction: 'outbound', date_sent: null, date_created: '2026-09-13T00:00:00Z' }) };
+        },
+      },
+    });
+
+    const [first, second] = await Promise.allSettled([api.send({ to: '+1', body: 'a' }), api.send({ to: '+1', body: 'b' })]);
+    expect(first.status).toBe('rejected');
+    expect(second.status).toBe('fulfilled');
+    expect((second as PromiseFulfilledResult<{ sid: string }>).value.sid).toBe('SM2');
   });
 });

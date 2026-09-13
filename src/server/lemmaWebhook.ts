@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { redactText } from '../pipeline/redact.js';
@@ -103,9 +103,48 @@ export interface LemmaWebhookServer {
   close(): Promise<void>;
 }
 
+/** Bounded window for Lemma replay dedupe. Lemma's webhook docs (see docs/integrations/LEMMA.md)
+ * specify only `X-Lemma-Signature`; there is no delivery id or timestamp header to key off, so we
+ * dedupe on the event identity (type + issue id) plus a hash of the signed raw body -- a captured,
+ * validly-signed request replayed later is rejected instead of emailing the founder again. */
+const REPLAY_DEDUPE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const REPLAY_DEDUPE_MAX_ENTRIES = 10_000;
+
+function replayKey(event: LemmaIssueEvent, rawBody: string): string {
+  const bodyHash = createHash('sha256').update(rawBody, 'utf8').digest('hex');
+  return `${event.type}:${event.issue.id}:${bodyHash}`;
+}
+
+function pruneDedupe(seen: Map<string, number>, now: number): void {
+  if (seen.size <= REPLAY_DEDUPE_MAX_ENTRIES) return;
+  for (const [key, at] of seen) {
+    if (now - at > REPLAY_DEDUPE_WINDOW_MS) seen.delete(key);
+  }
+}
+
+function respondSafely(res: ServerResponse, status: number, contentType: string, text: string): void {
+  if (res.writableEnded || res.destroyed) return;
+  try {
+    res.writeHead(status, { 'content-type': contentType }).end(text);
+  } catch {
+    // Socket died between the check and the write; nothing more to do.
+  }
+}
+
 export function startLemmaWebhookServer(opts: LemmaWebhookOptions): LemmaWebhookServer {
+  const seenEvents = new Map<string, number>();
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    void handle(req, res, opts);
+    // See webhook.ts for why these no-op listeners are load-bearing: an EventEmitter 'error' with
+    // no listener throws synchronously and crashes the process, independent of the promise chain.
+    req.on('error', () => {});
+    req.on('aborted', () => {});
+    res.on('error', () => {});
+    handle(req, res, opts, seenEvents).catch(() => {
+      respondSafely(res, 500, 'text/plain', 'internal error');
+    });
+  });
+  server.on('clientError', (_err, socket) => {
+    if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
   });
   server.listen(opts.port);
   return {
@@ -123,30 +162,43 @@ function emailFor(event: LemmaIssueEvent): { subject: string; body: string } {
   return { subject, body };
 }
 
-async function handle(req: IncomingMessage, res: ServerResponse, opts: LemmaWebhookOptions): Promise<void> {
+async function handle(req: IncomingMessage, res: ServerResponse, opts: LemmaWebhookOptions, seenEvents: Map<string, number>): Promise<void> {
   if (req.method !== 'POST') {
-    res.writeHead(404).end();
+    respondSafely(res, 404, 'text/plain', 'not found');
     return;
   }
   let body: string;
   try {
     body = await readBody(req);
   } catch (err) {
-    if (!(err instanceof LemmaBodyTooLargeError)) throw err;
-    res.writeHead(413, { 'content-type': 'text/plain' }).end('payload too large');
+    if (err instanceof LemmaBodyTooLargeError) {
+      respondSafely(res, 413, 'text/plain', 'payload too large');
+      return;
+    }
+    // Client disconnected mid-body; nothing to respond to if the socket is already gone.
+    respondSafely(res, 400, 'text/plain', 'bad request');
     return;
   }
   const signature = req.headers['x-lemma-signature'];
   const expected = lemmaSignature(body, opts.secret);
   if (typeof signature !== 'string' || !safeEqualHex(signature, expected)) {
-    res.writeHead(401, { 'content-type': 'text/plain' }).end('invalid signature');
+    respondSafely(res, 401, 'text/plain', 'invalid signature');
     return;
   }
   const event = parseEvent(body);
   if (!event) {
-    res.writeHead(400, { 'content-type': 'text/plain' }).end('unrecognized event');
+    respondSafely(res, 400, 'text/plain', 'unrecognized event');
     return;
   }
+  const now = Date.now();
+  const key = replayKey(event, body);
+  if (seenEvents.has(key)) {
+    // Replayed, validly-signed request: no-op 200 so Lemma doesn't retry, and never a second email.
+    respondSafely(res, 200, 'application/json', '{"ok":true}');
+    return;
+  }
+  seenEvents.set(key, now);
+  pruneDedupe(seenEvents, now);
   const { subject, body: emailBody } = emailFor(event);
   try {
     // The recipient always comes from opts.founderEmail, set at server construction time --
@@ -155,5 +207,5 @@ async function handle(req: IncomingMessage, res: ServerResponse, opts: LemmaWebh
   } catch {
     // A Lemma delivery failure never replaces or hides Exhibit's own result (6.10); just don't 500.
   }
-  res.writeHead(200, { 'content-type': 'application/json' }).end('{"ok":true}');
+  respondSafely(res, 200, 'application/json', '{"ok":true}');
 }

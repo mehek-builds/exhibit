@@ -31,10 +31,39 @@ export const PATTERNS = {
   performingArtsSuccess: /\b(box office|ticket sales|gate receipts|record sales|streaming (?:numbers|figures))\b[^\n]{0,90}\b(commercial success|performing arts)\b|\b(commercial success)\b[^\n]{0,90}\b(performing arts|box office|ticket sales|record sales)\b/i,
   revenue: /\b(revenue|MRR|ARR|gross sales)\b/i,
   pay: /\b(salary|base pay|compensation|stock|equity|shares|SAFE|investment)\b/i,
-  /** A personal-compensation statement tied to the founder, e.g. "her salary", "founder equity", "paid the founder", "I earn/receive". Not a bare occurrence of the word anywhere in the item. */
-  personalPay:
-    /\b(?:(?:her|his|their|my|your|the founder'?s?|I) (?:salary|base pay|compensation|equity|stock|shares|grant)|founder (?:stock|shares|equity)|(?:paid|pays|granted|awarded) (?:the founder|her|him|me|you)|I (?:earn|receive|was paid|am paid))\b/i,
+  /** A dollar/monetary amount: "$210,000", "180k", "$4M", "0.5%". */
+  amount: /(\$\s?\d[\d,]*(?:\.\d+)?\s*(?:k|K|m|M|million|thousand)?\b|\b\d[\d,]*(?:\.\d+)?\s*(?:k|K)\b|\b\d+(?:\.\d+)?\s?%)/,
+  /** A pay word that means personal pay on its own: salary, base pay/salary, compensation. */
+  payWord: /\b(salary|base (?:pay|salary)|compensation)\b/i,
+  /** "offer" is only pay when a money amount follows it in the same clause ("Offer: $190,000 base"). */
+  offerAmount: /\boffer(?:ed|s)?\b[^.;\n]{0,40}?(?:\$\s?\d|\b\d[\d,]*(?:\.\d+)?\s*[kK]\b)/i,
+  /** Structural evidence of genuine personal compensation: an offer letter/contract, or a W-2/pay stub. */
+  offerDocs: /\b(offer letter|employment (?:agreement|offer|contract)|signed offer|W-2|W2|pay ?stub)\b/i,
+  /** Equity or stock actually granted/awarded to the person, as distinct from a generic mention of "equity" or "stock". */
+  equityGrant: /\b(equity grant|stock grant|option grant|(?:granted|awarded|issued|vesting)\b[^\n]{0,40}\b(?:shares|equity|stock options?|options)\b)\b/i,
+  /** A pay-related word negated or made generic ("we don't offer stock options", "no salary", "stock market", "revenue per share"). */
+  negatedOrGenericPay:
+    /\b(?:don'?t|does\s?n'?t|doesn'?t|do\s?n'?t|no|not|never|isn'?t|aren'?t)\b[^\n]{0,30}\b(?:offer|pay|salary|compensation|equity|stock options?)\b|\b(?:stock market|stock index|revenue per share)\b/i,
 } as const;
+
+/**
+ * A genuine personal-compensation statement: an amount next to a pay word or "offer" (e.g. "Base
+ * salary $210,000", "Offer: $190,000 base plus 0.5% equity"), an offer letter/contract/W-2/pay
+ * stub, or an equity grant to the person. Structural cues, not pronouns, so it works whether the
+ * text says "her salary" or "Salary: $210,000". Negated or generic mentions ("we don't offer
+ * stock options", "stock market") never count, checked per line so a genuine statement elsewhere
+ * in the item still counts.
+ */
+export function isPersonalPay(text: string): boolean {
+  for (const line of text.split('\n')) {
+    if (PATTERNS.negatedOrGenericPay.test(line)) continue;
+    if (PATTERNS.offerDocs.test(line)) return true;
+    if (PATTERNS.equityGrant.test(line)) return true;
+    if (PATTERNS.payWord.test(line)) return true;
+    if (PATTERNS.offerAmount.test(line)) return true;
+  }
+  return false;
+}
 
 function enabled(opts: RuleOptions | undefined, id: string): boolean {
   return !(opts?.disabled ?? []).includes(id);
@@ -232,7 +261,7 @@ const RULES: ExplicitRule[] = [
       if (cls.kind !== 'remuneration') return null;
       const text = fullText(item);
       const q = quoteFor(text, PATTERNS.revenue);
-      if (!q || PATTERNS.personalPay.test(text)) return null;
+      if (!q || isPersonalPay(text)) return null;
       return mapping([8], 'rejected', 'T-revenue-not-pay', 'Company revenue is not personal remuneration (#8).', q);
     },
   },
@@ -274,7 +303,7 @@ export function enforceInvariants(m: Mapping, item: RedactedItem, profile: Found
   if (
     enabled(opts, 'T-revenue-not-pay') &&
     PATTERNS.revenue.test(text) &&
-    !PATTERNS.personalPay.test(text) &&
+    !isPersonalPay(text) &&
     !PATTERNS.funding.test(text) &&
     !PATTERNS.equity.test(text) &&
     !PATTERNS.futurePay.test(text)

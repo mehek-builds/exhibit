@@ -81,4 +81,53 @@ describe('redactText: A-number 7-9 digit range', () => {
     expect(second.text).toBe(first.text);
     expect(second.redactions).toEqual([]);
   });
+
+  it('redacts an A# label with a space before contiguous digits', () => {
+    const { text, redactions } = redactText('A# 123456789 is on file.');
+    expect(text).toContain('[REDACTED:a_number]');
+    expect(text).not.toContain('123456789');
+    expect(redactions).toEqual([{ type: 'a_number', count: 1 }]);
+  });
+
+  it('redacts a dash-grouped bare-A form with a space before the digits', () => {
+    const { text, redactions } = redactText('A 123-456-789 is the number.');
+    expect(text).toContain('[REDACTED:a_number]');
+    expect(text).not.toContain('123-456-789');
+    expect(redactions).toEqual([{ type: 'a_number', count: 1 }]);
+  });
+
+  it('redacts a labeled "A-Number" with contiguous digits', () => {
+    const { text, redactions } = redactText('A-Number: 123456789 on file.');
+    expect(text).toContain('[REDACTED:a_number]');
+    expect(text).not.toContain('123456789');
+    expect(redactions).toEqual([{ type: 'a_number', count: 1 }]);
+  });
+
+  it('redacts a labeled "USCIS #" with dash-grouped digits', () => {
+    const { text, redactions } = redactText('USCIS #: 123-456-789 on file.');
+    expect(text).toContain('[REDACTED:a_number]');
+    expect(text).not.toContain('123-456-789');
+    expect(redactions).toEqual([{ type: 'a_number', count: 1 }]);
+  });
+
+  it('does not redact "Series A" funding round mentions with digit-like text after', () => {
+    const prose = 'Series A 12 345 678 was the internal deal code, not an A-number.';
+    const { text, redactions } = redactText(prose);
+    expect(text).toBe(prose);
+    expect(redactions).toEqual([]);
+  });
+
+  it('does not redact "Plan A" with a phone-like number after it', () => {
+    const prose = 'Plan A 555-1234 is the backup contact line.';
+    const { text, redactions } = redactText(prose);
+    expect(text).toBe(prose);
+    expect(redactions).toEqual([]);
+  });
+
+  it('does not redact "Grade A" with a date-like number after it', () => {
+    const prose = 'Grade A 2026 09 13 was the inspection result.';
+    const { text, redactions } = redactText(prose);
+    expect(text).toBe(prose);
+    expect(redactions).toEqual([]);
+  });
 });

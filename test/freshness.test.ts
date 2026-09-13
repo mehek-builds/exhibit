@@ -54,6 +54,9 @@ describe('freshness: figures older than 12 months at export are re-queued', () =
     expect(after.decision_reason).toBeNull();
     // Cache key cleared so the Corroborator re-researches the exhibit instead of skipping it.
     expect(ledger.get('corroborated:EX-3-001')).toBe('');
+    // on_sheet flag cleared so queueFigures appends a fresh row instead of leaving the stale
+    // Approve on the old row as the only record of this figure in the Sheet (see queue.ts).
+    expect(ledger.get('on_sheet:FIG-001')).toBe('');
     // Not written into context notes: it is no longer `approved`, so decideFigure's
     // `status !== 'pending'` guard requires a fresh founder decision before any write happens.
     expect(after.status).not.toBe('approved');

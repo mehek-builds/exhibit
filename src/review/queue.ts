@@ -123,7 +123,16 @@ async function contextNotesFile(deps: ReviewDeps, exhibitId: string): Promise<{ 
   return raw ? (JSON.parse(raw) as { folder: string; sources: string }) : null;
 }
 
-export async function applyDecisions(deps: ReviewDeps): Promise<ReviewSummary> {
+/**
+ * `justStale` names figures that requeueStaleFigures just reset to `pending` this same run
+ * (PRD 6.11). Their Sheet row still carries the founder's Approve from before staleness -- that
+ * decision was made on a number that is now considered too old, so it must not count (constraint
+ * 13). Those figures are held pending here regardless of what the (stale) row says; once
+ * queueFigures appends a fresh row for them, a later run sees both rows and, because rows are
+ * append-only, uses only the LAST row per fig_id -- so the old Approve is superseded rather than
+ * re-read.
+ */
+export async function applyDecisions(deps: ReviewDeps, justStale: Set<string> = new Set()): Promise<ReviewSummary> {
   const { apps, ledger, trace, now } = deps;
   const summary: ReviewSummary = { approved: [], denied: [], pending: [], flagged: [], digestSent: false, degraded: [] };
   const sheetId = ledger.get('review_sheet');
@@ -141,10 +150,25 @@ export async function applyDecisions(deps: ReviewDeps): Promise<ReviewSummary> {
   const header = rows[0] ?? REVIEW_HEADERS;
   const col = (name: string) => header.indexOf(name);
 
+  // Keep only the newest row per fig_id (rows are append-only, so a later row in the sheet
+  // supersedes an earlier one for the same figure -- this is what lets a fresh re-queue row
+  // override a stale Approve left on an older row).
+  const lastRowByFigId = new Map<string, string[]>();
   for (const row of rows.slice(1)) {
     const figId = row[col('ID')] ?? '';
+    if (!figId) continue;
+    lastRowByFigId.set(figId, row);
+  }
+
+  for (const [figId, row] of lastRowByFigId) {
     const fig = ledger.figure(figId);
     if (!fig || fig.status !== 'pending') continue;
+    if (justStale.has(figId)) {
+      // Went stale this run: no row can carry a valid decision yet (the fresh row is appended
+      // later this same run, by queueFigures). Leave pending; do not read the old row at all.
+      summary.pending.push(figId);
+      continue;
+    }
     if ((row[col('Figure and value')] ?? '') !== figureCell(fig)) {
       summary.flagged.push({ fig_id: figId, issue: 'value cell edited in the Sheet; ignored (the agent reads only Decision and Reason)' });
     }

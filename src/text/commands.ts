@@ -224,9 +224,8 @@ export class AnthropicCommandParser implements CommandParser {
 
     // Defense in depth: re-validate the structured output against CommandSchema (zod already
     // enforces this on the way out of Output.object, but a future output/schema drift must not
-    // silently pass through), and bound the count to what the text could plausibly contain --
-    // the model can never hallucinate more commands than there are command keywords in the text.
-    const validated = output.commands.filter((c) => {
+    // silently pass through).
+    const schemaValid = output.commands.filter((c) => {
       try {
         CommandSchema.parse(c);
         return true;
@@ -234,8 +233,58 @@ export class AnthropicCommandParser implements CommandParser {
         return false;
       }
     });
-    const keywordMatches = [...text.matchAll(KEYWORD_RE)].length;
-    const cap = Math.max(1, keywordMatches);
-    return validated.slice(0, cap);
+
+    // Every command must be grounded in the text: no capped count (a single "deny" keyword can
+    // legitimately yield two deny commands; "pause ... approve" must keep both). Instead, each
+    // command's kind must be implied by a keyword/synonym present in the text, and every figure
+    // number it references must actually appear in the text. Ungrounded output -> clarify and
+    // apply nothing, rather than silently dropping or letting the model invent facts.
+    const deduped: ParsedCommand[] = [];
+    const seen = new Set<string>();
+    for (const c of schemaValid) {
+      const key = JSON.stringify(c);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(c);
+    }
+
+    for (const c of deduped) {
+      if (!isGrounded(c, text)) {
+        return [unclear(`I wasn't able to confirm everything in "${text.trim()}". Could you rephrase it as separate short commands (e.g. "approve 1", "deny 2 <reason>", "pause until <date>")?`)];
+      }
+    }
+
+    return deduped;
   }
+}
+
+const KIND_SYNONYM_RE: Partial<Record<ParsedCommand['kind'], RegExp>> = {
+  approve: /\bapprove/i,
+  deny: /\bdeny/i,
+  pause: /\b(pause|traveling|travelling|no asks?)\b/i,
+  resume: /\bresume/i,
+  add_evidence: /\b(add[ _]evidence|i\s+(judged|spoke|presented|published|wrote|reviewed|interviewed|won|received|got|gave|attended|was)\b)/i,
+  next: /\bnext\b/i,
+  status: /\bstatus\b/i,
+  stop: /\bstop\b/i,
+  start: /\bstart\b/i,
+  yes: /\byes\b/i,
+};
+
+/** A command is grounded when its kind is implied by a keyword/synonym present in the text, and
+ * any figure number(s) it cites actually appear in the text (as digits). unclear/status/next/
+ * resume/start/stop/yes carry no figures to check beyond the kind keyword itself. */
+function isGrounded(cmd: ParsedCommand, text: string): boolean {
+  if (cmd.kind === 'unclear') return true;
+  const re = KIND_SYNONYM_RE[cmd.kind];
+  if (re && !re.test(text)) return false;
+
+  const numbersInText = new Set(parseNumbers(text));
+  if (cmd.kind === 'approve' && cmd.figures !== 'all') {
+    return cmd.figures.every((n) => numbersInText.has(n));
+  }
+  if (cmd.kind === 'deny') {
+    return numbersInText.has(cmd.figure);
+  }
+  return true;
 }

@@ -74,29 +74,49 @@ export function createTwilioApi(opts: TwilioApiOptions): TwilioApi {
   const now = opts.now ?? (() => Date.now());
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   let lastSendAt: number | null = null;
+  // Serialize sends through a promise chain: concurrent callers queue behind each other so the
+  // throttle's read-then-write of lastSendAt is never racing another send. Each link awaits its
+  // own throttle wait + request; a failure in one send must not break the chain for later sends,
+  // so the chain link always resolves (never rejects) and the underlying error/result is
+  // re-thrown/returned from the per-caller wrapper instead.
+  let sendChain: Promise<void> = Promise.resolve();
+
+  async function doSend(message: { to: string; body: string }): Promise<{ sid: string }> {
+    // Trial rate limit (~1 message per 3s per sender, see module doc above): never enforced by
+    // Twilio's own client, so this adapter self-throttles at the send path.
+    if (lastSendAt !== null) {
+      const elapsed = now() - lastSendAt;
+      if (elapsed < minSendIntervalMs) await sleep(minSendIntervalMs - elapsed);
+    }
+    lastSendAt = now();
+
+    const to = message.to.startsWith('whatsapp:') || opts.sender.startsWith('whatsapp:') ? (message.to.startsWith('whatsapp:') ? message.to : `whatsapp:${message.to}`) : message.to;
+    const res = await transport.request({
+      method: 'POST',
+      url: `${base}/Messages.json`,
+      headers: { authorization: auth, 'content-type': 'application/x-www-form-urlencoded' },
+      body: form({ To: to, From: opts.sender, Body: message.body }),
+    });
+    if (res.status >= 300) throw new Error(`twilio send failed: ${res.status} ${safeErrorBody(res.body)}`);
+    const parsed = JSON.parse(res.body) as TwilioMessageJson;
+    return { sid: parsed.sid };
+  }
 
   return {
     sender: opts.sender,
 
     async send(message) {
-      // Trial rate limit (~1 message per 3s per sender, see module doc above): never enforced by
-      // Twilio's own client, so this adapter self-throttles at the send path.
-      if (lastSendAt !== null) {
-        const elapsed = now() - lastSendAt;
-        if (elapsed < minSendIntervalMs) await sleep(minSendIntervalMs - elapsed);
-      }
-      lastSendAt = now();
-
-      const to = message.to.startsWith('whatsapp:') || opts.sender.startsWith('whatsapp:') ? (message.to.startsWith('whatsapp:') ? message.to : `whatsapp:${message.to}`) : message.to;
-      const res = await transport.request({
-        method: 'POST',
-        url: `${base}/Messages.json`,
-        headers: { authorization: auth, 'content-type': 'application/x-www-form-urlencoded' },
-        body: form({ To: to, From: opts.sender, Body: message.body }),
+      const previous = sendChain;
+      let release!: () => void;
+      sendChain = new Promise<void>((resolve) => {
+        release = resolve;
       });
-      if (res.status >= 300) throw new Error(`twilio send failed: ${res.status} ${safeErrorBody(res.body)}`);
-      const parsed = JSON.parse(res.body) as TwilioMessageJson;
-      return { sid: parsed.sid };
+      await previous;
+      try {
+        return await doSend(message);
+      } finally {
+        release();
+      }
     },
 
     async listInbound() {

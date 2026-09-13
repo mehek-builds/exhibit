@@ -2,7 +2,7 @@ import type { Apps, GmailMessage } from '../apps/types.js';
 import { TwinExpiredError, TwinStubError } from '../apps/types.js';
 import type { LetterRow, Ledger } from '../ledger.js';
 import type { TraceContext } from '../observability/tracer.js';
-import { O1_NAMES } from '../binder/scorecard.js';
+import { O1_NAMES, oneExhibitFromMetCriteria } from '../binder/scorecard.js';
 import { parseAddress } from '../pipeline/intake.js';
 import type { ExhibitRecord, FounderProfile, O1Criterion, Recommender } from '../types.js';
 import { daysBetween, isoDay, slug } from '../util.js';
@@ -52,22 +52,47 @@ function linkedExhibits(r: Recommender, exhibits: ExhibitRecord[]): ExhibitRecor
 }
 
 /**
- * PRD 6.8: a letter request is also triggered for a criterion that is one exhibit from `met`, not only
- * one already `met`. A `needs_attorney` item is filed to the exhibits table (with `people`) and is the
- * scorecard's own definition of "one exhibit from met" (6.7: building = invitations, future-pay
- * contracts, needs_attorney items). Rejected items never trigger a request.
+ * Rule ids that mark a `needs_attorney` item as a failure of the pipeline itself rather than a
+ * substantive borderline call: no source date anywhere (E25, verifier.ts `V-no-source-date`), a
+ * hallucinated or not-found quote (E17, mapper.ts `V-quote-not-found`), and an unmapped or
+ * model-failure route (E29, mapper.ts `N-unmapped`). None of these are evidence a recommender can
+ * honestly speak to, so they must never seed a letter draft or be cited in one.
  */
-function nearMissExhibits(r: Recommender, exhibits: ExhibitRecord[]): ExhibitRecord[] {
+const FAILURE_RULE_IDS = new Set(['V-no-source-date', 'V-quote-not-found', 'N-unmapped']);
+
+/** True when a `needs_attorney` exhibit actually passed verification: it has at least one O-1A
+ * criterion, a real source date, and a rule id that isn't one of the pipeline-failure routes above. */
+function isVerifiedNeedsAttorney(e: ExhibitRecord): boolean {
+  return e.criteria.length > 0 && !!e.event_date && !FAILURE_RULE_IDS.has(e.rule_id);
+}
+
+/**
+ * PRD 6.8: a letter request is also triggered for a criterion that is one exhibit from `met`, not only
+ * one already `met` -- but only from a `needs_attorney` exhibit that actually passed verification
+ * (isVerifiedNeedsAttorney) AND belongs to a criterion the scorecard itself marks one qualifying
+ * exhibit short (6.7's own "building" computation, reused via oneExhibitFromMetCriteria). Exhibits
+ * routed to needs_attorney by a pipeline failure (undated, hallucinated quote, unmapped/model-error, no
+ * criteria at all) never trigger a request, and neither does a criterion that is already met. Rejected
+ * items never trigger a request.
+ */
+function nearMissExhibits(r: Recommender, exhibits: ExhibitRecord[], almostMet: Set<O1Criterion>): ExhibitRecord[] {
   const email = r.email.toLowerCase();
-  return exhibits.filter((e) => e.status === 'needs_attorney' && e.people.some((p) => p.email?.toLowerCase() === email));
+  return exhibits.filter(
+    (e) =>
+      e.status === 'needs_attorney' &&
+      isVerifiedNeedsAttorney(e) &&
+      e.criteria.some((c) => almostMet.has(c)) &&
+      e.people.some((p) => p.email?.toLowerCase() === email),
+  );
 }
 
 /** Every exhibit the recommender can honestly speak to: exhibits for a criterion already `met`, plus
- * exhibits for a criterion one exhibit from `met` (PRD 6.8). Still requires worth-sending and the
- * founder's APPROVE for that exact letter id before anything sends. */
-function letterTriggerExhibits(r: Recommender, exhibits: ExhibitRecord[]): ExhibitRecord[] {
+ * verified exhibits for a criterion one exhibit from `met` (PRD 6.8). Still requires worth-sending and
+ * the founder's APPROVE for that exact letter id before anything sends. */
+function letterTriggerExhibits(r: Recommender, exhibits: ExhibitRecord[], ledger: Ledger): ExhibitRecord[] {
+  const almostMet = oneExhibitFromMetCriteria(ledger);
   const seen = new Set<string>();
-  const combined = [...linkedExhibits(r, exhibits), ...nearMissExhibits(r, exhibits)];
+  const combined = [...linkedExhibits(r, exhibits), ...nearMissExhibits(r, exhibits, almostMet)];
   return combined.filter((e) => (seen.has(e.exhibit_id) ? false : (seen.add(e.exhibit_id), true)));
 }
 
@@ -220,7 +245,7 @@ export async function processLetters(deps: LetterDeps): Promise<LetterSummary> {
 
   for (const r of profile.recommenderCandidates) {
     const id = letterId(r);
-    const linked = letterTriggerExhibits(r, exhibits);
+    const linked = letterTriggerExhibits(r, exhibits, ledger);
     if (linked.length === 0) {
       summary.skipped.push({ email: r.email, reason: 'no linked qualifying exhibit' });
       continue;

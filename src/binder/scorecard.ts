@@ -231,6 +231,26 @@ export interface ScorecardContext {
   sharingWarnings: string[];
 }
 
+/**
+ * PRD 6.7's own definition of "one exhibit from met": an O-1A criterion with zero qualifying exhibits
+ * but at least one `building`/`needs_attorney` candidate against it (a criterion is `met` the moment it
+ * has one qualifying exhibit, so this set is exactly the criteria one qualifying exhibit short).
+ * Exported so the letter trigger (PRD 6.8) reuses the scorecard's own computation instead of
+ * duplicating it.
+ */
+export function oneExhibitFromMetCriteria(ledger: Ledger): Set<O1Criterion> {
+  const exhibits = ledger.exhibits();
+  const candidates = ledger.candidates();
+  const qualifying = exhibits.filter((e) => e.status === 'qualifying');
+  const result = new Set<O1Criterion>();
+  for (const o1 of [1, 2, 3, 4, 5, 6, 7, 8] as O1Criterion[]) {
+    const o1Ex = qualifying.filter((e) => e.criteria.includes(o1));
+    const building = candidates.filter((c) => c.criteria.includes(o1) && (c.status === 'building' || c.status === 'needs_attorney'));
+    if (o1Ex.length === 0 && building.length > 0) result.add(o1);
+  }
+  return result;
+}
+
 export function buildScorecard(ledger: Ledger, profile: FounderProfile, now: Date, ctx: ScorecardContext): Scorecard {
   const exhibits = ledger.exhibits();
   const candidates = ledger.candidates();

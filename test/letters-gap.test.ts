@@ -6,6 +6,7 @@ import { LibraryWorthSendingGate } from '../src/letters/worthSending.js';
 import { Ledger } from '../src/ledger.js';
 import type { LetterRow } from '../src/ledger.js';
 import { LocalTracer } from '../src/observability/tracer.js';
+import type { CandidateRow } from '../src/ledger.js';
 import type { ExhibitRecord, FounderProfile } from '../src/types.js';
 import { NOW, seed } from '../harness/corpus.js';
 import { MemoryTwins } from '../src/twins/memory.js';
@@ -37,6 +38,33 @@ function baseExhibit(p: Partial<ExhibitRecord> & { exhibit_id: string; people: E
     supersedes: null,
     ...p,
   } as ExhibitRecord;
+}
+
+function baseCandidate(p: Partial<CandidateRow> & { key: string; criteria: ExhibitRecord['criteria'] }): CandidateRow {
+  return {
+    status: 'needs_attorney',
+    eb1a_status: 'needs_attorney',
+    title: 'candidate',
+    issuer: null,
+    event_date: '2026-03-14',
+    url: null,
+    sources: [],
+    checks: [],
+    exhibit_id: null,
+    updated_run: 'r1',
+    mapping: {
+      criteria: p.criteria,
+      eb1a_criteria: [],
+      status: p.status ?? 'needs_attorney',
+      eb1a_status: p.eb1a_status ?? 'needs_attorney',
+      comparable_for: [],
+      rule_id: 'C4-awaiting-service',
+      reason: 'awaiting service',
+      quote: 'q',
+      decided_by: 'rule',
+    },
+    ...p,
+  };
 }
 
 function baseLetter(p: Partial<LetterRow> & { letter_id: string }): LetterRow {
@@ -135,14 +163,18 @@ describe('letters: a "one exhibit from met" criterion also triggers a request (P
     return { deps, ledger };
   }
 
-  it('drafts a letter for a recommender named on a needs_attorney exhibit (one exhibit from met), not only a qualifying one', async () => {
+  it('drafts a letter for a recommender named on a verified needs_attorney exhibit whose criterion is genuinely one exhibit from met', async () => {
     const r = PROFILE.recommenderCandidates[0]!;
     const profile: FounderProfile = { ...PROFILE, recommenderCandidates: [r] };
     const { deps, ledger } = await makeDeps(profile);
+    ledger.upsertCandidate(baseCandidate({ key: 'c-1', criteria: [4] }));
     ledger.insertExhibit(
       baseExhibit({
         exhibit_id: 'EX-4-009',
         status: 'needs_attorney',
+        rule_id: 'C4-awaiting-service',
+        event_date: '2026-03-14',
+        criteria: [4],
         people: [{ name: r.name, email: r.email }],
       }),
       'r1',
@@ -151,6 +183,114 @@ describe('letters: a "one exhibit from met" criterion also triggers a request (P
     const summary = await processLetters(deps);
     expect(summary.skipped.find((s) => s.email === r.email)).toBeUndefined();
     expect(summary.drafted.length + summary.held.length + summary.approvalRequested.length).toBeGreaterThan(0);
+    ledger.close();
+  });
+
+  it('does not trigger, and is never cited, from a needs_attorney exhibit with no source date anywhere (E25)', async () => {
+    const r = PROFILE.recommenderCandidates[0]!;
+    const profile: FounderProfile = { ...PROFILE, recommenderCandidates: [r] };
+    const { deps, ledger } = await makeDeps(profile);
+    ledger.upsertCandidate(baseCandidate({ key: 'c-1', criteria: [4] }));
+    ledger.insertExhibit(
+      baseExhibit({
+        exhibit_id: 'EX-4-009',
+        status: 'needs_attorney',
+        rule_id: 'V-no-source-date',
+        event_date: null,
+        criteria: [4],
+        people: [{ name: r.name, email: r.email }],
+      }),
+      'r1',
+      null,
+    );
+    const summary = await processLetters(deps);
+    expect(summary.skipped.find((s) => s.email === r.email)?.reason).toBe('no linked qualifying exhibit');
+    ledger.close();
+  });
+
+  it('does not trigger, and is never cited, from a needs_attorney exhibit with a hallucinated or not-found quote (E17)', async () => {
+    const r = PROFILE.recommenderCandidates[0]!;
+    const profile: FounderProfile = { ...PROFILE, recommenderCandidates: [r] };
+    const { deps, ledger } = await makeDeps(profile);
+    ledger.upsertCandidate(baseCandidate({ key: 'c-1', criteria: [4] }));
+    ledger.insertExhibit(
+      baseExhibit({
+        exhibit_id: 'EX-4-009',
+        status: 'needs_attorney',
+        rule_id: 'V-quote-not-found',
+        criteria: [4],
+        people: [{ name: r.name, email: r.email }],
+      }),
+      'r1',
+      null,
+    );
+    const summary = await processLetters(deps);
+    expect(summary.skipped.find((s) => s.email === r.email)?.reason).toBe('no linked qualifying exhibit');
+    ledger.close();
+  });
+
+  it('does not trigger, and is never cited, from an unmapped or model-failure needs_attorney exhibit (E29)', async () => {
+    const r = PROFILE.recommenderCandidates[0]!;
+    const profile: FounderProfile = { ...PROFILE, recommenderCandidates: [r] };
+    const { deps, ledger } = await makeDeps(profile);
+    ledger.upsertCandidate(baseCandidate({ key: 'c-1', criteria: [4] }));
+    ledger.insertExhibit(
+      baseExhibit({
+        exhibit_id: 'EX-4-009',
+        status: 'needs_attorney',
+        rule_id: 'N-unmapped',
+        criteria: [4],
+        people: [{ name: r.name, email: r.email }],
+      }),
+      'r1',
+      null,
+    );
+    const summary = await processLetters(deps);
+    expect(summary.skipped.find((s) => s.email === r.email)?.reason).toBe('no linked qualifying exhibit');
+    ledger.close();
+  });
+
+  it('does not trigger, and is never cited, from a needs_attorney exhibit with no criteria at all', async () => {
+    const r = PROFILE.recommenderCandidates[0]!;
+    const profile: FounderProfile = { ...PROFILE, recommenderCandidates: [r] };
+    const { deps, ledger } = await makeDeps(profile);
+    ledger.insertExhibit(
+      baseExhibit({
+        exhibit_id: 'EX-4-009',
+        status: 'needs_attorney',
+        rule_id: 'X-artistic-athletic-eb1a-only',
+        criteria: [],
+        people: [{ name: r.name, email: r.email }],
+      }),
+      'r1',
+      null,
+    );
+    const summary = await processLetters(deps);
+    expect(summary.skipped.find((s) => s.email === r.email)?.reason).toBe('no linked qualifying exhibit');
+    ledger.close();
+  });
+
+  it('does not trigger from a verified needs_attorney exhibit whose criterion is already met', async () => {
+    const r = PROFILE.recommenderCandidates[0]!;
+    const profile: FounderProfile = { ...PROFILE, recommenderCandidates: [r] };
+    const { deps, ledger } = await makeDeps(profile);
+    // Criterion 4 already has a qualifying exhibit (met) -- a needs_attorney item on the same
+    // criterion is not "one exhibit from met" and must not trigger via near-miss.
+    ledger.insertExhibit(baseExhibit({ exhibit_id: 'EX-4-001', status: 'qualifying', criteria: [4], people: [] }), 'r1', null);
+    ledger.upsertCandidate(baseCandidate({ key: 'c-1', criteria: [4] }));
+    ledger.insertExhibit(
+      baseExhibit({
+        exhibit_id: 'EX-4-009',
+        status: 'needs_attorney',
+        rule_id: 'C4-awaiting-service',
+        criteria: [4],
+        people: [{ name: r.name, email: r.email }],
+      }),
+      'r1',
+      null,
+    );
+    const summary = await processLetters(deps);
+    expect(summary.skipped.find((s) => s.email === r.email)?.reason).toBe('no linked qualifying exhibit');
     ledger.close();
   });
 

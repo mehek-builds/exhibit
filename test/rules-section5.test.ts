@@ -39,6 +39,43 @@ describe('T-revenue-not-pay: the bypass sentence bug', () => {
   });
 });
 
+describe('T-revenue-not-pay: structural personal-pay phrasings exempt the trap', () => {
+  const cases: Array<[string, string]> = [
+    ['salary with amount and revenue nearby', 'Salary: $210,000 per year. Company revenue was $4M ARR this quarter.'],
+    ['base salary with amount', 'Revenue grew to $3M ARR. Base salary $210,000.'],
+    ['annual compensation with amount', 'Annual compensation: $180k. Revenue was $2M this quarter.'],
+    ['offer with amount and equity', 'Offer: $190,000 base plus 0.5% equity. Revenue was $2M this quarter.'],
+    ['signed offer letter', 'We are pleased to extend this signed offer letter. Revenue was $2M this quarter.'],
+    ['W-2', 'Attached is your W-2 for tax year 2025. Revenue was $2M this quarter.'],
+    ['pay stub', 'Your pay stub for this period is attached. Revenue was $2M this quarter.'],
+    ['equity grant to the person', 'You were issued an equity grant of 50,000 shares. Revenue was $2M this quarter.'],
+  ];
+  for (const [label, text] of cases) {
+    it(`qualifies #8: ${label}`, () => {
+      const it_ = redacted({ app: 'gmail', id: `m-pay-${label.replace(/\s+/g, '-')}`, title: 'Comp update', text });
+      const m = applyExplicitRules(it_, cls({ kind: 'remuneration' }), PROFILE);
+      expect(m?.rule_id).not.toBe('T-revenue-not-pay');
+    });
+  }
+
+  const trapped: Array<[string, string]> = [
+    ['negated stock options', "Revenue was $2M this quarter. We don't offer stock options to early hires."],
+    ['stock market mention', 'Revenue was $2M this quarter. The stock market had a rough week.'],
+    ['revenue per share', 'Revenue was $2M this quarter. Revenue per share was $0.40.'],
+    ['no salary offered', 'Revenue was $2M this quarter. No salary is offered at this stage.'],
+    ['generic offer, no amount', 'Revenue was $2M this quarter. We offer free onboarding to every customer.'],
+    ['offer with a revenue amount', 'We offer annual plans; revenue was $2M this quarter.'],
+  ];
+  for (const [label, text] of trapped) {
+    it(`still traps: ${label}`, () => {
+      const it_ = redacted({ app: 'gmail', id: `m-trap-${label.replace(/\s+/g, '-')}`, title: 'Q2 update', text });
+      const m = applyExplicitRules(it_, cls({ kind: 'remuneration' }), PROFILE);
+      expect(m!.rule_id).toBe('T-revenue-not-pay');
+      expect(m!.status).toBe('rejected');
+    });
+  }
+});
+
 describe('T-revenue-not-pay backstop in enforceInvariants', () => {
   it('a model mapping whose only #8 evidence is company revenue can never end up qualifying #8', () => {
     const it_ = redacted({
@@ -51,6 +88,18 @@ describe('T-revenue-not-pay backstop in enforceInvariants', () => {
     const out = enforceInvariants(modelMapping, it_, PROFILE);
     expect(out.criteria).not.toContain(8);
     expect(out.status).toBe('rejected');
+  });
+
+  it('does not drop #8 when the item carries a genuine structural pay statement alongside revenue', () => {
+    const it_ = redacted({
+      app: 'gmail',
+      id: 'm-revenue-with-salary',
+      title: 'Comp update',
+      text: 'Base salary $210,000. Company revenue was $4M ARR this quarter.',
+    });
+    const modelMapping: Mapping = mapping([8], 'qualifying', 'D-equity-comparable', 'model reason', 'Base salary $210,000.', { decided_by: 'model' });
+    const out = enforceInvariants(modelMapping, it_, PROFILE);
+    expect(out.criteria).toContain(8);
   });
 
   it('does not drop #8 when the item also carries real funding/equity evidence', () => {

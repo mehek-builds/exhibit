@@ -87,9 +87,45 @@ export interface WebhookServer {
 
 const EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
 
+/** Bounded window for Twilio MessageSid replay/retry dedupe (Twilio retries the same delivery). */
+const SID_DEDUPE_WINDOW_MS = 10 * 60 * 1000;
+const SID_DEDUPE_MAX_ENTRIES = 10_000;
+
+function pruneDedupe(seen: Map<string, number>, now: number): void {
+  if (seen.size <= SID_DEDUPE_MAX_ENTRIES) return;
+  for (const [key, at] of seen) {
+    if (now - at > SID_DEDUPE_WINDOW_MS) seen.delete(key);
+  }
+}
+
+/** Fail safely: never let a request crash the process. Response errors are swallowed (the socket
+ * is already gone); handler errors get a 500 when the socket is still writable, otherwise we just
+ * stop -- there's nothing left to respond to. */
+function respondSafely(res: ServerResponse, status: number, contentType: string, text: string): void {
+  if (res.writableEnded || res.destroyed) return;
+  try {
+    res.writeHead(status, { 'content-type': contentType }).end(text);
+  } catch {
+    // Socket died between the check and the write; nothing more to do.
+  }
+}
+
 export function startWebhookServer(opts: WebhookOptions): WebhookServer {
+  const seenSids = new Map<string, number>();
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-    void handle(req, res, opts);
+    // A client that disconnects mid-body raises 'error'/'aborted' on the request (and sometimes
+    // 'error' on the response once it tries to write back). With no listener, Node's default
+    // behavior for an EventEmitter 'error' with no handler is to throw synchronously and crash the
+    // process, so these no-op listeners alone are load-bearing, independent of the promise chain.
+    req.on('error', () => {});
+    req.on('aborted', () => {});
+    res.on('error', () => {});
+    handle(req, res, opts, seenSids).catch(() => {
+      respondSafely(res, 500, 'text/plain', 'internal error');
+    });
+  });
+  server.on('clientError', (_err, socket) => {
+    if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
   });
   server.listen(opts.port);
   return {
@@ -98,30 +134,44 @@ export function startWebhookServer(opts: WebhookOptions): WebhookServer {
   };
 }
 
-async function handle(req: IncomingMessage, res: ServerResponse, opts: WebhookOptions): Promise<void> {
+async function handle(req: IncomingMessage, res: ServerResponse, opts: WebhookOptions, seenSids: Map<string, number>): Promise<void> {
   if (req.method !== 'POST') {
-    res.writeHead(404).end();
+    respondSafely(res, 404, 'text/plain', 'not found');
     return;
   }
   let body: string;
   try {
     body = await readBody(req);
   } catch (err) {
-    if (!(err instanceof BodyTooLargeError)) throw err;
-    res.writeHead(413, { 'content-type': 'text/plain' }).end('payload too large');
+    if (err instanceof BodyTooLargeError) {
+      respondSafely(res, 413, 'text/plain', 'payload too large');
+      return;
+    }
+    // Client disconnected mid-body (socket 'error'/'aborted' surfaced through the async iterator):
+    // nothing to respond to if the socket is already gone, otherwise a plain 400 clean-up.
+    respondSafely(res, 400, 'text/plain', 'bad request');
     return;
   }
   const params = parseForm(body);
   const signature = req.headers['x-twilio-signature'];
   const expected = twilioSignature(opts.publicUrl, params, opts.authToken);
   if (typeof signature !== 'string' || !safeEqual(signature, expected)) {
-    res.writeHead(403, { 'content-type': 'text/plain' }).end('invalid signature');
+    respondSafely(res, 403, 'text/plain', 'invalid signature');
     return;
   }
-  try {
-    await opts.onMessage(toTextMessage(params));
-  } catch {
-    // The webhook must still ack Twilio; failures are handled by the notifier/text channel, not here.
+  const sid = params.MessageSid ?? params.SmsSid ?? '';
+  const now = Date.now();
+  const isReplay = sid !== '' && seenSids.has(sid);
+  if (sid !== '') {
+    if (!isReplay) seenSids.set(sid, now);
+    pruneDedupe(seenSids, now);
   }
-  res.writeHead(200, { 'content-type': 'text/xml' }).end(EMPTY_TWIML);
+  if (!isReplay) {
+    try {
+      await opts.onMessage(toTextMessage(params));
+    } catch {
+      // The webhook must still ack Twilio; failures are handled by the notifier/text channel, not here.
+    }
+  }
+  respondSafely(res, 200, 'text/xml', EMPTY_TWIML);
 }
