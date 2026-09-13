@@ -9,6 +9,8 @@ import { verifyBinder } from '../integrity/verify.js';
 import type { VerifyBinderResult } from '../integrity/verify.js';
 import { decodeOts } from '../integrity/ots.js';
 import { verifyProof } from '../integrity/opentimestamps.js';
+import { buildMockDeps } from '../mock/deps.js';
+import { createIntegrityFixtures } from '../../harness/fixtures/integrity.js';
 
 // `exhibit verify` (PRD 6.6, 6.14, E64). Live dependencies come from src/config.ts;
 // tests can inject the same interface directly.
@@ -41,6 +43,18 @@ function liveBlockHeaders(): (height: number) => Promise<string | null> {
       return null;
     }
   };
+}
+
+/** `verify --mock`: the same mock binder run/watch/serve --mock build, checked with fixture block
+ * headers (never markUpgraded'd in mock mode, so every attestation reads as pending, not failed --
+ * matching how mock mode never confirms a Bitcoin timestamp). */
+async function mockVerifyDeps(stateDir?: string): Promise<VerifyCliDeps> {
+  const { deps, close } = await buildMockDeps({ stateDir });
+  const raw = deps.ledger.get('binder');
+  if (!raw) throw new Error('exhibit verify --mock: no binder found in the mock ledger (has `exhibit run --mock` run yet?)');
+  const binderRoot = (JSON.parse(raw) as { root: string }).root;
+  const { blockHeaders } = createIntegrityFixtures();
+  return { drive: deps.apps.drive, ledger: deps.ledger, binderRoot, blockHeaders, close };
 }
 
 async function liveVerifyDeps(): Promise<VerifyCliDeps> {
@@ -129,7 +143,8 @@ export async function verifyExportedDemo(outDir: string): Promise<VerifyBinderRe
 
 /** Returns the process exit code (0 clean, 1 any failure) so the caller decides whether to actually exit. */
 export async function cmdVerify(argv: string[], injected?: VerifyCliDeps): Promise<number> {
-  const { values } = parseArgs({ args: argv, options: { demo: { type: 'string' } } });
+  const { values } = parseArgs({ args: argv, options: { demo: { type: 'string' }, mock: { type: 'boolean', default: false }, live: { type: 'boolean', default: false }, state: { type: 'string' } } });
+  if (values.mock && values.live) throw new Error('--mock and --live cannot be combined; choose one.');
   if (values.demo) {
     if (injected) throw new Error('cmdVerify: --demo cannot be combined with injected live dependencies.');
     const result = await verifyExportedDemo(values.demo);
@@ -137,6 +152,18 @@ export async function cmdVerify(argv: string[], injected?: VerifyCliDeps): Promi
     console.log('Uses the fixture chain manifest exported by the demo, not Bitcoin mainnet.');
     console.log(renderTable(result));
     return result.failed.length > 0 || result.pending.length > 0 ? 1 : 0;
+  }
+  if (values.mock) {
+    if (injected) throw new Error('cmdVerify: --mock cannot be combined with injected live dependencies.');
+    const deps = await mockVerifyDeps(values.state);
+    try {
+      console.log('MOCK MODE: verifying the mock binder (fixture block headers, no Bitcoin mainnet).');
+      const result = await verifyBinder({ drive: deps.drive, ledger: deps.ledger, binderRoot: deps.binderRoot, blockHeaders: deps.blockHeaders });
+      console.log(renderTable(result));
+      return result.failed.length > 0 ? 1 : 0;
+    } finally {
+      await deps.close?.();
+    }
   }
   const deps = injected ?? (await liveVerifyDeps());
   try {

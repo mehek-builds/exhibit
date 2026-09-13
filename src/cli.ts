@@ -9,7 +9,7 @@ import { currentRelease } from './release.js';
 import { generateBrief } from './brief.js';
 import type { MutationResult } from './brief.js';
 import { runDemo } from './demo.js';
-import { intervalMilliseconds, positiveSafeInteger } from './cli-validation.js';
+import { assertNotBothModes, durationMilliseconds, intervalMilliseconds, portNumber, positiveSafeInteger } from './cli-validation.js';
 
 // Exhibit CLI (PRD section 13 brief skeleton, section 14 demo). Entry point
 // for `npx tsx src/cli.ts <command>`; bin/exhibit.mjs spawns tsx on this file.
@@ -302,11 +302,62 @@ function explainLiveEnv(): void {
   console.log('            EXHIBIT_PROFILE (founder profile JSON string; required to run).');
 }
 
+const MOCK_BANNER = 'MOCK MODE: synthetic founder, in-memory apps, no network';
+
+function defaultMockStateDir(): string {
+  return join(process.cwd(), '.exhibit', 'mock');
+}
+
+function printMockRunSummary(summary: import('./agent.js').RunSummary): void {
+  console.log(`Exhibits filed: ${summary.filed.length}${summary.filed.length ? ` (${summary.filed.join(', ')})` : ''}`);
+  console.log(`Figures queued: ${summary.review?.pending?.length ?? 0}`);
+  console.log(`Letters: ${summary.letters ? JSON.stringify(summary.letters) : 'none'}`);
+  if (summary.scorecardText) {
+    const o1 = summary.scorecardText.match(/O-1A: \d+ of 8[^\n]*/)?.[0];
+    const eb1 = summary.scorecardText.match(/EB-1A: \d+ of 10[^\n]*/)?.[0];
+    if (o1) console.log(o1);
+    if (eb1) console.log(eb1);
+  }
+  console.log(`Outcome: ${summary.outcome}`);
+}
+
 async function cmdRun(args: string[]): Promise<void> {
-  const { values } = parseArgs({ args, options: { live: { type: 'boolean', default: false } } });
+  const { values } = parseArgs({
+    args,
+    options: {
+      live: { type: 'boolean', default: false },
+      mock: { type: 'boolean', default: false },
+      state: { type: 'string' },
+      advance: { type: 'string' },
+    },
+  });
+  try {
+    assertNotBothModes(values);
+  } catch (err) {
+    fail((err as Error).message);
+  }
+  if (values.mock) {
+    const { buildMockDeps } = await import('./mock/deps.js');
+    const { runExhibit } = await import('./agent.js');
+    console.log(MOCK_BANNER);
+    const stateDir = values.state ?? defaultMockStateDir();
+    const { deps, env, save, close } = await buildMockDeps({ stateDir });
+    try {
+      if (values.advance) {
+        env.clock.advance(durationMilliseconds(values.advance, '--advance'));
+      }
+      const summary = await runExhibit(deps);
+      printMockRunSummary(summary);
+      save();
+      if (summary.outcome !== 'ok') process.exitCode = 1;
+    } finally {
+      await close();
+    }
+    return;
+  }
   if (!values.live) {
     explainLiveEnv();
-    fail('Refusing to run without --live (harness mode is `exhibit eval`).');
+    fail('Refusing to run without --live or --mock (harness mode is `exhibit eval`).');
   }
   const missing = LIVE_ENV_VARS.filter((v) => !process.env[v]);
   if (missing.length || !process.env.EXHIBIT_PROFILE) {
@@ -325,11 +376,53 @@ async function cmdRun(args: string[]): Promise<void> {
 }
 
 async function cmdWatch(args: string[]): Promise<void> {
-  const { values } = parseArgs({ args, options: { live: { type: 'boolean', default: false }, interval: { type: 'string', default: '300' } } });
+  const { values } = parseArgs({
+    args,
+    options: {
+      live: { type: 'boolean', default: false },
+      mock: { type: 'boolean', default: false },
+      interval: { type: 'string', default: '300' },
+      state: { type: 'string' },
+      'advance-per-tick': { type: 'string' },
+    },
+  });
+  try {
+    assertNotBothModes(values);
+  } catch (err) {
+    fail((err as Error).message);
+  }
+  if (values.mock) {
+    const intervalMs = intervalMilliseconds(values.interval!, '--interval');
+    const advancePerTickMs = values['advance-per-tick'] ? durationMilliseconds(values['advance-per-tick'], '--advance-per-tick') : 0;
+    const { buildMockDeps } = await import('./mock/deps.js');
+    const { runExhibit } = await import('./agent.js');
+    console.log(MOCK_BANNER);
+    const stateDir = values.state ?? defaultMockStateDir();
+    const { deps, env, save, close } = await buildMockDeps({ stateDir });
+    let stopped = false;
+    process.on('SIGINT', () => {
+      stopped = true;
+      console.log('Stopping after the current run, saving state...');
+    });
+    try {
+      while (!stopped) {
+        if (advancePerTickMs) env.clock.advance(advancePerTickMs);
+        const summary = await runExhibit(deps);
+        console.log(`${new Date().toISOString()} ${JSON.stringify(summary.summary)}`);
+        save();
+        if (stopped) break;
+        await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
+      }
+    } finally {
+      save();
+      await close();
+    }
+    return;
+  }
   const intervalMs = intervalMilliseconds(values.interval!, '--interval');
   if (!values.live) {
     explainLiveEnv();
-    fail('Refusing to watch without --live.');
+    fail('Refusing to watch without --live or --mock.');
   }
   const missing = LIVE_ENV_VARS.filter((v) => !process.env[v]);
   if (missing.length || !process.env.EXHIBIT_PROFILE) {
@@ -356,6 +449,61 @@ async function cmdWatch(args: string[]): Promise<void> {
   }
 }
 
+// ---------------- text --mock ----------------
+
+async function cmdText(args: string[]): Promise<void> {
+  const { values, positionals } = parseArgs({
+    args,
+    allowPositionals: true,
+    options: {
+      mock: { type: 'boolean', default: false },
+      port: { type: 'string' },
+      from: { type: 'string' },
+    },
+  });
+  if (!values.mock) fail('`exhibit text` currently only supports --mock (text your local `serve --mock`).');
+  const message = positionals.join(' ');
+  if (!message) fail('Usage: exhibit text --mock ["--port <n>"] ["--from <E.164>"] "<message>"');
+  const port = portNumber(values.port ?? '8787');
+  const { DARA } = await import('../harness/corpus.js');
+  const founderPhone = DARA.phone ?? '';
+  const from = values.from ?? founderPhone;
+  if (from !== founderPhone) {
+    console.log(`Ignored: ${from} is not the synthetic founder's verified number (${founderPhone}); per constraint 15, inbound texts from any other number are dropped.`);
+  }
+  const { twilioSignature } = await import('./server/webhook.js');
+  const authToken = 'mock-twilio-auth-token';
+  const url = `http://127.0.0.1:${port}/twilio`;
+  const params: Record<string, string> = { From: from, To: 'whatsapp:+15550009999', Body: message, MessageSid: `SMmock${Date.now()}` };
+  const signature = twilioSignature(url, params, authToken);
+  const body = new URLSearchParams(params).toString();
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded', 'x-twilio-signature': signature },
+    body,
+  });
+  console.log(`POST ${url} -> ${res.status}`);
+  await res.text().catch(() => '');
+
+  // Give serve --mock's inbound-triggered run a moment to finish before reading the outbox.
+  await new Promise<void>((resolve) => setTimeout(resolve, 500));
+
+  const outboxRes = await fetch(`http://127.0.0.1:${port + 1}/mock/outbox`).catch(() => null);
+  if (!outboxRes || outboxRes.status !== 200) {
+    console.log('(no /mock/outbox reply available)');
+    return;
+  }
+  const outbox = (await outboxRes.json()) as { messages: { direction: string; to: string; from: string; body: string }[] };
+  const replies = outbox.messages.filter((m) => m.direction === 'outbound');
+  if (replies.length === 0) {
+    console.log('(no reply recorded yet)');
+  } else {
+    console.log('Replies:');
+    for (const r of replies.slice(-5)) console.log(`  ${r.from} -> ${r.to}: ${r.body}`);
+  }
+}
+
 // ---------------- help ----------------
 
 function cmdHelp(): void {
@@ -371,11 +519,24 @@ function cmdHelp(): void {
   demo [--out out/demo]
   lift --issue <text> --gmail <path> --expect-status <status> [--criteria 3,4] [--never 1] [--title ...]
   run --live
+  run --mock [--state <dir>] [--advance <1h|7d|...>]
   watch --live [--interval <seconds, min 60>]
+  watch --mock [--state <dir>] [--interval <seconds, min 60>] [--advance-per-tick <dur>]
   serve [--interval <seconds, min 60>] [--port <n>]   Twilio webhook plus the scheduled run (live)
+  serve --mock [--state <dir>] [--interval <seconds>] [--port <n>]
+  text --mock ["--port <n>"] ["--from <E.164>"] "<message>"   Text your local serve --mock
   verify [--demo out/demo]                    Re-check a live binder or an exported synthetic demo
+  verify --mock [--state <dir>]               Re-check the mock binder built by run/watch/serve --mock
   loop                                        Lifted-scenario loop status and detector labels from reports/eval-latest.json
-  help`);
+  flow [--out out/flow] [--json]              Walk every PRD stage end to end on mock data; exit 1 if any stage fails
+  help
+
+  Run the whole flow on mock data (no live keys, no network):
+    exhibit run --mock
+    exhibit serve --mock
+    exhibit text --mock "approve 1"
+    exhibit run --mock --advance 7d
+    exhibit verify --mock`);
 }
 
 /** Commands that return an exit code set it without cutting off pending output. */
@@ -406,12 +567,16 @@ async function main(): Promise<void> {
       return cmdRun(rest);
     case 'watch':
       return cmdWatch(rest);
+    case 'text':
+      return cmdText(rest);
     case 'serve':
       return exitWith(await (await import('./commands/serve.js')).cmdServe(rest));
     case 'verify':
       return exitWith(await (await import('./commands/verify.js')).cmdVerify(rest));
     case 'loop':
       return exitWith(await (await import('./commands/loop.js')).cmdLoop(rest));
+    case 'flow':
+      return exitWith(await (await import('./commands/flow.js')).cmdFlow(rest));
     case 'help':
     case undefined:
       return cmdHelp();

@@ -63,6 +63,27 @@ attestations against block headers fetched independently from Blockstream.
 `watch --live`, `serve`, `loop`). `npm run check` runs typecheck, tests and the rule check;
 `npm run eval`, `npm run brief` and friends in `package.json` wrap the same commands.
 
+## Run the whole flow on mock data
+
+`--mock` runs the entire product end to end -- discovery, filing, review, letters, signing,
+translation, integrity timestamping, and the Twilio text channel -- against the same synthetic
+founder, in-memory twins and fixtures the harness uses, with no live keys and no network. State
+persists in `.exhibit/mock/` (already gitignored) across invocations, so `run --mock` twice in a
+row files nothing new the second time.
+
+```bash
+npx tsx src/cli.ts run --mock                    # one agent run: files exhibits, drafts letters, updates the scorecard
+npx tsx src/cli.ts serve --mock                   # Twilio webhook + scheduled run, on mock deps (prints the fake auth token and mock public URL)
+npx tsx src/cli.ts text --mock "approve 1"        # texts your local serve --mock as the synthetic founder, prints the reply
+npx tsx src/cli.ts run --mock --advance 7d        # advances the mock clock a week, so time-based stages (digest, nudges) fire
+npx tsx src/cli.ts verify --mock                  # re-checks the mock binder (fixture block headers, not Bitcoin mainnet)
+```
+
+`watch --mock [--interval <s>] [--advance-per-tick <dur>]` repeats `run --mock` on a timer, saving
+state on every tick and on Ctrl-C. `--mock` and `--live` cannot be combined on any of `run`, `watch`,
+`serve` or `verify`. Use `--state <dir>` on any mock command to point at a different state directory
+than the default `.exhibit/mock/`.
+
 ## How it proves itself
 
 Exhibit's proof is a loop across three platforms, each answering a different question (PRD 12.6):
