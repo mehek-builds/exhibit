@@ -1,6 +1,6 @@
 # Exhibit: system and reliability brief
 
-Batch: batch_1789331474666 | Release: cfdb66e | Brief generated: 2026-09-13T20:31:38.819Z | Eval window: 2026-09-13T20:31:00.998Z to 2026-09-13T20:31:14.666Z
+Batch: batch_1789333956790 | Release: 33bed02 | Brief generated: 2026-09-13T21:12:44.380Z | Eval window: 2026-09-13T21:12:22.835Z to 2026-09-13T21:12:36.790Z
 
 ## 1. What it does
 
@@ -17,7 +17,7 @@ A classifier and a criterion mapper (Claude, through the Vercel AI SDK) sort eac
 | Plumbing (the founder's own data and the binder) | Gmail, Google Calendar, Google Drive, Google Sheets, Google Docs, GitHub | Arga twins |
 | Discover evidence she never saw | GDELT (world news), Podcast Index, Hacker News, Product Hunt, OpenReview, ORCID, Hugging Face Hub, SEC EDGAR (Form D), USPTO PatentSearch | Recorded responses replayed with injected edge cases (S21); a discovered item must name the founder and a second identifier |
 | Verify the numbers from official data | OpenAlex, Crossref, Semantic Scholar (journals and citations), BLS and O*NET (the 90th-percentile wage for her occupation code), ecosyste.ms (package adoption) | Recorded responses; every figure still needs two sources and her approval |
-| Make the binder tamper-evident | Internet Archive Save Page Now (dated third-party copies of public sources), OpenTimestamps (each exhibit's hash anchored in Bitcoin) | Verified by `exhibit verify` (S22), which anyone can re-run |
+| Make the binder tamper-evident | Internet Archive Save Page Now (dated third-party copies of public sources), OpenTimestamps (each stampable artifact hash is submitted to timestamp calendars; Bitcoin anchoring exists only after confirmation) | Verified by `exhibit verify` (S22), which anyone can re-run |
 | Act | Dropbox Sign (letters out for signature, test mode), DeepL API Free (draft translations, flagged for a certified translator), Twilio free trial (the message thread) | State read back from each service (S23, S24); Twilio twin (S20) |
 | After filing | USCIS Case Status API (Torch) | Sandbox only; production access pending USCIS approval |
 
@@ -213,33 +213,33 @@ Summed across all 84 attempt(s) in this batch (each attempt starts from an empty
 
 ## 10b. Integrity and integrations
 
-Tamper-evidence. Every filed artifact's SHA-256 is stamped with OpenTimestamps, and every approved public source page is archived with the Internet Archive. `exhibit verify` re-checks the binder against both.
+Tamper-evidence. Every stampable filed artifact's SHA-256 is stamped with OpenTimestamps, and every approved public source page is archived with the Internet Archive. `exhibit verify` re-checks filed artifact bytes against their timestamp proofs; archive results are recorded separately.
 
 | Measure | Result |
 |---|---|
-| Artifacts filed and stamped | 150 of 447 |
-| Timestamp proofs confirmed in Bitcoin (the rest pending, upgraded nightly) | 0 |
+| Artifacts with timestamp records | 285 |
+| Latest proof status: confirmed by synthetic fixture headers / pending | 120 / 165 |
 | `exhibit verify`: untouched files passing / altered file caught | 117 / 3 |
 | Approved public sources archived | 24 of 24 |
 
 Discovery. Candidates found by source, and what became of them:
 
-| Source | Candidates | Became exhibits | Rejected by the second-identifier rule | Merged with an inbox item |
+| Source | Items observed | Accepted as candidates | Rejected by the second-identifier rule | Duplicate URLs |
 |---|---|---|---|---|
-| gdelt | 27 | 0 | 0 | 0 |
-| huggingface | 9 | 0 | 0 | 0 |
-| fake-tier2 | 9 | 0 | 0 | 0 |
-| hackernews | 9 | 0 | 0 | 0 |
-| producthunt | 9 | 0 | 0 | 0 |
-| podcastindex | 6 | 0 | 0 | 0 |
-| uspto | 6 | 0 | 0 | 0 |
-| openreview | 9 | 0 | 0 | 0 |
-| orcid | 6 | 0 | 0 | 0 |
-| edgar | 6 | 0 | 0 | 0 |
+| gdelt | 36 | 12 | 12 | 12 |
+| huggingface | 12 | 6 | 0 | 6 |
+| fake-tier2 | 9 | 6 | 3 | 0 |
+| hackernews | 27 | 3 | 18 | 6 |
+| producthunt | 27 | 0 | 27 | 0 |
+| podcastindex | 18 | 6 | 0 | 12 |
+| uspto | 18 | 3 | 9 | 6 |
+| openreview | 27 | 0 | 27 | 0 |
+| orcid | 18 | 0 | 18 | 0 |
+| edgar | 18 | 3 | 9 | 6 |
 
 Numbers from official data. Figures drawn from structured APIs versus web pages: not tracked separately in this batch's events; see section 10.
 
-Letters. Dropbox Sign requests (test mode): 21 created, 3 signed, 12 declined, and 0 created without both approvals (target 0, read back from the Dropbox Sign event log).
+Letters. Dropbox Sign requests (test mode): 6 created, 3 signed, 3 declined, 3 refused before sending by the day-mode safety gate, and 0 created without both approvals (target 0, read back from the Dropbox Sign event log).
 
 ## 11. What was real and what was simulated
 
