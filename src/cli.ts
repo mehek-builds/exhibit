@@ -21,6 +21,18 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
+function positiveInteger(value: string, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) fail(`${flag} must be a positive integer; received '${value}'.`);
+  return parsed;
+}
+
+function positiveNumber(value: string, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) fail(`${flag} must be a positive number; received '${value}'.`);
+  return parsed;
+}
+
 function writeJson(path: string, value: unknown): void {
   mkdirSync(join(path, '..'), { recursive: true });
   let text: string;
@@ -49,8 +61,16 @@ async function cmdEval(args: string[]): Promise<void> {
       backend: { type: 'string', default: 'memory' },
     },
   });
-  const { runMatrix } = await import('../harness/runner.js');
+  const { listScenarios, runMatrix } = await import('../harness/runner.js');
   const scenarios = values.scenario ? values.scenario.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+  const attempts = positiveInteger(values.attempts!, '--attempts');
+  const gate = values.gate;
+  if (gate !== 'mcp' && gate !== 'library') fail(`Unknown --gate '${gate}'; expected 'mcp' or 'library'.`);
+  if (scenarios) {
+    const known = new Set(listScenarios().map((scenario) => scenario.id));
+    const unknown = scenarios.filter((scenario) => !known.has(scenario));
+    if (unknown.length) fail(`Unknown --scenario value(s): ${unknown.join(', ')}.`);
+  }
   const release = currentRelease();
   const backend = values.backend as 'memory' | 'arga';
   if (backend !== 'memory' && backend !== 'arga') fail(`Unknown --backend '${values.backend}'; expected 'memory' or 'arga'.`);
@@ -58,12 +78,12 @@ async function cmdEval(args: string[]): Promise<void> {
   if (backend === 'arga' && !argaApiKey) {
     fail("--backend arga requires ARGA_API_KEY to be set in the environment. Refusing to start: this backend never silently falls back to memory.");
   }
-  console.log(`Running eval: backend=${backend}, ${scenarios ? scenarios.join(', ') : values.core ? 'core scenarios' : 'all scenarios'}, attempts=${values.attempts}, gate=${values.gate}, release=${release}`);
+  console.log(`Running eval: backend=${backend}, ${scenarios ? scenarios.join(', ') : values.core ? 'core scenarios' : 'all scenarios'}, attempts=${attempts}, gate=${gate}, release=${release}`);
   const result = await runMatrix({
     scenarios,
     core: values.core,
-    attempts: Number(values.attempts),
-    gate: values.gate as 'mcp' | 'library',
+    attempts,
+    gate,
     release,
     backend,
     argaApiKey,
@@ -134,6 +154,8 @@ async function cmdAffected(args: string[]): Promise<void> {
   const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { git: { type: 'string' } } });
   const graph = loadGraph();
   const fragments = values.git ? changedFragmentsSince(graph, values.git) : positionals;
+  const unknown = fragments.filter((fragment) => !graph.fragments.has(fragment));
+  if (unknown.length) fail(`Unknown fragment(s): ${unknown.join(', ')}.`);
   printAffected(graph, fragments);
 }
 
@@ -312,6 +334,7 @@ async function cmdRun(args: string[]): Promise<void> {
 
 async function cmdWatch(args: string[]): Promise<void> {
   const { values } = parseArgs({ args, options: { live: { type: 'boolean', default: false }, interval: { type: 'string', default: '300' } } });
+  const intervalMs = positiveNumber(values.interval!, '--interval') * 1000;
   if (!values.live) {
     explainLiveEnv();
     fail('Refusing to watch without --live.');
@@ -324,7 +347,6 @@ async function cmdWatch(args: string[]): Promise<void> {
   const { buildLiveDeps } = await import('./config.js');
   const { runExhibit } = await import('./agent.js');
   const { deps, close } = await buildLiveDeps(process.env);
-  const intervalMs = Number(values.interval) * 1000;
   let stopped = false;
   process.on('SIGINT', () => {
     stopped = true;

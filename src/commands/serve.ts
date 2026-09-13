@@ -21,8 +21,22 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
+function positiveNumber(value: string, flag: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) fail(`${flag} must be a positive number; received '${value}'.`);
+  return parsed;
+}
+
+function portNumber(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65_535) fail(`--port must be an integer from 1 to 65535; received '${value}'.`);
+  return parsed;
+}
+
 export async function cmdServe(args: string[]): Promise<void> {
   const { values } = parseArgs({ args, options: { interval: { type: 'string', default: '3600' }, port: { type: 'string' } } });
+  const port = portNumber(values.port ?? process.env.PORT ?? '8787');
+  const intervalMs = positiveNumber(values.interval!, '--interval') * 1000;
 
   const missing = LIVE_ENV_VARS.filter((v) => !process.env[v]);
   if (missing.length || !process.env.EXHIBIT_PROFILE) {
@@ -36,9 +50,6 @@ export async function cmdServe(args: string[]): Promise<void> {
   for (const f of features) console.log(`  ${f.enabled ? 'on ' : 'off'}  ${f.id}: ${f.reason}`);
 
   const twilioReady = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PUBLIC_URL;
-  const port = Number(values.port ?? process.env.PORT ?? 8787);
-  const intervalMs = Number(values.interval) * 1000;
-
   let stopped = false;
   let running = false;
   let runAgainAfter = false;
