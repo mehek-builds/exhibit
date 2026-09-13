@@ -167,6 +167,30 @@ const PARSE_CASES: Case[] = [
     reference: '2026-09-01T00:00:00Z',
     expected: { date: '2026-10-20T00:00:00.000Z', kind: 'event' },
   },
+  {
+    name: 'plain "please let us know by" is a reply deadline (review N1)',
+    text: 'Would you judge HackX on October 20, 2026? Please let us know by September 16.',
+    reference: '2026-09-01T00:00:00Z',
+    expected: { date: '2026-09-16T00:00:00.000Z', kind: 'deadline' },
+  },
+  {
+    name: '"let us know if you are available by" is a reply deadline (review N1)',
+    text: 'Judge HackX on October 20, 2026. Let us know if you are available by September 16.',
+    reference: '2026-09-01T00:00:00Z',
+    expected: { date: '2026-09-16T00:00:00.000Z', kind: 'deadline' },
+  },
+  {
+    name: '"confirm your interest by" is a reply deadline',
+    text: 'Judge HackX on October 20, 2026. Please confirm your interest by September 16.',
+    reference: '2026-09-01T00:00:00Z',
+    expected: { date: '2026-09-16T00:00:00.000Z', kind: 'deadline' },
+  },
+  {
+    name: '"let us know your travel plans by" stays a logistics request, not a reply deadline',
+    text: 'Judge HackX on October 20, 2026. Let us know your travel plans by September 16.',
+    reference: '2026-09-01T00:00:00Z',
+    expected: { date: '2026-10-20T00:00:00.000Z', kind: 'event' },
+  },
 ];
 
 describe('parseInviteActionDate: must return nothing (conservative on ambiguity/invalidity)', () => {

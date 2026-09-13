@@ -157,11 +157,13 @@ const DATE_CHARS = "[A-Za-z0-9][A-Za-z0-9,.\\/ -]{2,24}";
 // flight, dietary, registration, ...) never turns "confirm"/"let us know" into a reply deadline.
 const REPLY_VERB =
   `(?:reply|respond|rsvp|get back to (?:us|me)|` +
-  `let (?:us|me) know (?:if|whether) you can (?:judge|join|attend|make it)|` +
-  `confirm\\s+(?:your\\s+)?(?:participation|attendance|availability|whether you can (?:judge|join|attend)))`;
+  `let (?:us|me) know (?:if|whether) you (?:can (?:judge|join|attend|make it)|are available)|` +
+  `confirm\\s+(?:your\\s+)?(?:participation|attendance|availability|interest|whether you can (?:judge|join|attend)))`;
 const DEADLINE_RE = new RegExp(
   `${REPLY_VERB}[^.\\n]{0,40}?\\bby\\b\\s+(${DATE_CHARS})` +
-    `|(?:please\\s+)?confirm\\s+by\\s+(${DATE_CHARS})` +
+    // "please confirm by" and a plain "let us/me know by": the verb sits directly before "by", so there
+    // is no logistics object in between (N1: main already treated "let us know by" as a reply deadline).
+    `|(?:(?:please\\s+)?confirm|let\\s+(?:us|me)\\s+know)\\s+by\\s+(${DATE_CHARS})` +
     `|(?:reply|response|rsvp|confirmation)\\s+deadline(?:\\s+is\\b|:)?\\s*(${DATE_CHARS})`,
   'i',
 );
