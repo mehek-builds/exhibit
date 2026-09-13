@@ -579,7 +579,7 @@ function integrityAndIntegrationsSection(m: MatrixResult): string {
     '',
     `Numbers from official data. Figures drawn from structured APIs versus web pages: not tracked separately in this batch's events; see section 10.`,
     '',
-    `Letters. Dropbox Sign requests (test mode): ${dsCreated} created, ${dsSigned} signed, ${dsDeclined} declined, ${dsRefused} refused before sending by the day-mode safety gate, and ${dsUnapproved} created without both approvals (target 0, read back from the Dropbox Sign event log).`,
+    `Letters. Dropbox Sign requests (test mode): ${dsCreated} created, ${dsSigned} signed, ${dsDeclined} declined, ${dsRefused} refused before sending by the day-mode safety gate, and ${dsUnapproved} created without both approvals (target 0, counted from Exhibit's own signature events, which record whether the recommender's confirmation and the founder's approval were present when each request was created).`,
   ].join('\n');
 }
 
