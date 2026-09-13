@@ -1,0 +1,58 @@
+{
+  "name": "exhibit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "An agent that builds a founder's O-1A and EB-1A evidence binder from Gmail, Calendar, Drive, Sheets, Docs, GitHub and LinkedIn, proven in twins.",
+  "bin": {
+    "exhibit": "bin/exhibit.mjs"
+  },
+  "scripts": {
+    "exhibit": "tsx src/cli.ts",
+    "demo": "tsx src/cli.ts demo",
+    "eval": "tsx src/cli.ts eval",
+    "eval:core": "tsx src/cli.ts eval --core",
+    "mutate": "tsx src/cli.ts mutate",
+    "brief": "tsx src/cli.ts brief",
+    "affected": "tsx src/cli.ts affected",
+    "verify": "tsx src/cli.ts verify",
+    "serve": "tsx src/cli.ts serve",
+    "loop": "tsx src/cli.ts loop",
+    "prove-rules": "tsx src/cli.ts prove-rules",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test && tsx src/cli.ts check-rules"
+  },
+  "keywords": [
+    "agents",
+    "o-1a",
+    "eb-1a",
+    "arga",
+    "lemma",
+    "worth-sending",
+    "uberprompt"
+  ],
+  "author": "Mehek Mandal",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.53",
+    "@anthropic-ai/sdk": "^0.125.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@octokit/rest": "^22.0.1",
+    "@uselemma/tracing": "^7.12.0",
+    "ai": "^7.0.99",
+    "arga-sdk": "^0.1.3",
+    "googleapis": "^180.0.0",
+    "worth-sending-mcp": "github:wudpecker/worth-sending-mcp#944a941e4a20b139f9fbe33fce8c423e5fee680d",
+    "zod": "^4.6.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}

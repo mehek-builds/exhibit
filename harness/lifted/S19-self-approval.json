@@ -1,0 +1,18 @@
+{
+  "id": "S19-record",
+  "title": "Self-approval: agent's own approval-request email read as the founder's approval",
+  "sourceIssue": "harness S13 re-run: on a re-run, Exhibit's own \"[Exhibit] Approve letter request LTR-priya to Priya Raman\" email, which carries the literal line `APPROVE LTR-priya` as copy text so the founder can see what would go out, was itself matched by the approval reader. A recommender (priya@buildnight.example) could be emailed a letter request with the founder never having replied, violating hard constraint 1.",
+  "createdAt": "2026-09-13T00:00:00Z",
+  "gmail": [
+    { "id": "m-bn-invite", "from": "Priya Raman <priya@buildnight.example>", "date": "2026-02-02T17:00:00Z", "subject": "Would you judge Spring Build Night?", "body": "Hi Dara,\n\nWe invite you to be one of our judges for Spring Build Night on March 14, 2026.\n\nPriya Raman\nProgram Director, Build Night" },
+    { "id": "m-bn-reply", "from": "Dara Voss <dara@loomwork.example>", "to": ["priya@buildnight.example"], "date": "2026-02-03T09:00:00Z", "subject": "Re: Would you judge Spring Build Night?", "body": "Happy to judge! See you on the 14th." },
+    { "id": "m-bn-cert", "from": "Priya Raman <priya@buildnight.example>", "date": "2026-03-16T17:00:00Z", "subject": "Your judging certificate: Spring Build Night", "body": "Hi Dara,\n\nThanks for judging! Attached is your certificate of judging. You evaluated 40 submissions.\n\nPriya" }
+  ],
+  "expect": { "source": "gmail:m-bn-invite", "status": "qualifying", "criteria": [4] },
+  "note": "This file is a RECORD only, deliberately given id 'S19-record' (not 'S19') so harness/scenarios.ts's generic *.json loader in this directory does not collide with the id 'S19'. The actual defect is letters/approval behaviour -- whether an email got sent and to whom -- which this directory's gmail/expect.status/criteria/never format cannot express (it only asserts a candidate's mapping). The gmail item above only reproduces enough of the Build Night seed for this record to parse as a valid lifted-scenario file; its expect block is a mapping smoke check, not the fix's actual pass condition. The enforced check lives in harness/scenarios/lifted-letters.ts, exported as S19 (three runs, no founder reply -- must stay unsent: zero sends to priya@buildnight.example, letter state still approval_requested, no letter_sent event) and S19_founderApproves (a genuine quoted reply -- must send exactly once). The reviewer wires those into the matrix (harness/scenarios.ts's scenarios() or its own loader) per the file-ownership note; they are not picked up automatically the way this directory's JSON files are.",
+  "fix": {
+    "guard": "src/letters/letters.ts approvalFor(id, requestedAt, agentMessageIds, founderMessages, profile): excludes the agent's own message ids (agentMessageIds) and any message containing letters.ts's APPROVAL_INSTRUCTION marker before its first quoted line.",
+    "auditAndGrader": "src/observability/audit.ts auditRun (constraint 1 check) and harness/grade.ts prohibitedSideEffects both require a letter_sent event whose approval_message_id is a founder message that is not one of the agent's own sent ids."
+  },
+  "closureRule": "Resolved only when S19 (harness/scenarios/lifted-letters.ts) passes 3 of 3 in the latest batch and does not recur in later traces (PRD 12.6, founder's loop rule)."
+}

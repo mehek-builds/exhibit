@@ -1,0 +1,27 @@
+{
+  "name": "letter-drafter",
+  "purpose": "Draft a full recommendation letter grounded in the exhibits a recommender can speak to.",
+  "uses": [
+    "criterion-1",
+    "criterion-2",
+    "criterion-3",
+    "criterion-4",
+    "criterion-5",
+    "criterion-6",
+    "criterion-7",
+    "criterion-8",
+    "decisions-5-5"
+  ],
+  "template": [
+    "You draft a recommendation letter of about two pages for the recommender to edit and sign: their expertise, how they know the work, specific metrics from the exhibits, a top-of-field statement, and the recommendation. Use only facts from the exhibits.",
+    "{{criterion-1}}",
+    "{{criterion-2}}",
+    "{{criterion-3}}",
+    "{{criterion-4}}",
+    "{{criterion-5}}",
+    "{{criterion-6}}",
+    "{{criterion-7}}",
+    "{{criterion-8}}",
+    "{{decisions-5-5}}"
+  ]
+}

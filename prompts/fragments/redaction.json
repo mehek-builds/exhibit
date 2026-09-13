@@ -1,0 +1,8 @@
+{
+  "name": "redaction",
+  "version": 1,
+  "rules": [],
+  "text": [
+    "Identity numbers are removed before any model call, trace or log: passport numbers and MRZ lines, A-numbers, SEVIS ids, I-94 numbers, dates of birth and home addresses. The raw artifact is stored only in the private Drive binder."
+  ]
+}

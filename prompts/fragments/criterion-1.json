@@ -1,0 +1,17 @@
+{
+  "name": "criterion-1",
+  "version": 1,
+  "rules": [
+    "C1-award-competitive",
+    "C1-no-selection-criteria",
+    "T-participation-certificate",
+    "T-pay-to-enter"
+  ],
+  "text": [
+    "Criterion 1 (O-1A 1, EB-1A i): nationally or internationally recognized prizes or awards for excellence.",
+    "Counts (C1-award-competitive): a competitive award with a named issuer and stated selection criteria: a hackathon or pitch-competition win; YC or accelerator acceptance (see decisions-5-5); merit-based selections. Awards limited to young or early-career people count.",
+    "Needs attorney (C1-no-selection-criteria): an award whose issuer states no selection criteria.",
+    "Rejected: SAFE or angel funding as an award (T-funding-not-award, counts toward #8 instead); participation certificates (T-participation-certificate); self-nominated or pay-to-enter awards (T-pay-to-enter).",
+    "Signals: Gmail from the issuer domain; issuer posts on LinkedIn."
+  ]
+}

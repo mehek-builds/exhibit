@@ -1,0 +1,18 @@
+{
+  "name": "decisions-5-5",
+  "version": 1,
+  "rules": [
+    "D-accelerator-acceptance"
+  ],
+  "text": [
+    "Rule decisions confirmed by the founder on 2026-09-13. These count toward the O-1A and supersede the June research.",
+    "YC or accelerator acceptance counts under #1 awards and #2 membership (D-accelerator-acceptance).",
+    "Founder equity in place of salary counts under #8 as comparable evidence (D-equity-comparable).",
+    "Venture funding counts under #8; it never counts as an award (D-funding-remuneration, T-funding-not-award).",
+    "Judging student hackathons counts under #4 (D-student-hackathon-judging).",
+    "Conference talks count under #6 as comparable evidence (D-talk-comparable).",
+    "Code reviews on popular open-source repos count under #4 as comparable evidence (D-code-review-comparable).",
+    "Stars and forks from others count under #3 as comparable evidence, alongside #5 (C5-adoption).",
+    "IADAS and merit-based open-source organization membership count under #2 (C2-selective-membership)."
+  ]
+}

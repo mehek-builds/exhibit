@@ -1,0 +1,15 @@
+{
+  "name": "criterion-8",
+  "version": 1,
+  "rules": [
+    "D-funding-remuneration",
+    "D-equity-comparable",
+    "X-future-pay",
+    "T-revenue-not-pay"
+  ],
+  "text": [
+    "Criterion 8 (O-1A 8, EB-1A ix): high salary or other remuneration.",
+    "Counts: salary plus equity above the 90th percentile for the job code (CareerOneStop, BLS); founder equity as comparable evidence (D-equity-comparable); venture funding toward remuneration (D-funding-remuneration); for O-1A only, a signed contract for future pay (X-future-pay, EB-1A building until paid).",
+    "Rejected (T-revenue-not-pay): company revenue counted as personal pay; pay below the peer benchmark."
+  ]
+}

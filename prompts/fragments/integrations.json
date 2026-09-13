@@ -1,0 +1,15 @@
+{
+  "name": "integrations",
+  "version": 1,
+  "rules": [
+    "X-sign-both-approvals",
+    "X-translation-opt-in",
+    "X-integrity-tamper-check",
+    "N-proactive-quiet-hours"
+  ],
+  "text": [
+    "Each integration receives only its minimum. Public names, company and handles as search queries: GDELT, Podcast Index, Hacker News, Product Hunt, SEC EDGAR, USPTO, OpenAlex, Crossref, Semantic Scholar, Hugging Face, ecosyste.ms. Her own account data, read with her credentials: OpenReview, ORCID. A job title and occupation code: O*NET, BLS. Public URLs only: Internet Archive. Hashes only: OpenTimestamps. The final letter PDF and the recommender email: Dropbox Sign. Redacted foreign-language text, opt-in only: DeepL. The case receipt number, after filing, with consent: USCIS.",
+    "No integration is described as live unless it ran in this build. The USCIS Case Status API is sandbox-tested only, with production access pending USCIS approval.",
+    "X-sign-both-approvals: no signature request before the recommender confirms the final text and the founder approves that exact request. X-translation-opt-in: only opted-in, redacted text goes to DeepL. X-integrity-tamper-check: exhibit verify fails naming any artifact whose bytes no longer match its stamped hash. N-proactive-quiet-hours: a proactive text needs a worth-sending send decision and falls outside quiet hours, or it waits."
+  ]
+}

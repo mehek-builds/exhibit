@@ -1,0 +1,94 @@
+{
+  "prompts": {
+    "classifier": [
+      "S1",
+      "S5",
+      "S7",
+      "S8",
+      "S9",
+      "S12",
+      "S15",
+      "S21"
+    ],
+    "mapper": [
+      "S1",
+      "S2",
+      "S3",
+      "S4",
+      "S5",
+      "S6",
+      "S7",
+      "S8",
+      "S9",
+      "S16",
+      "S21"
+    ],
+    "scorecard-writer": [
+      "S1",
+      "S6",
+      "S13",
+      "S14",
+      "S16"
+    ],
+    "letter-drafter": [
+      "S10",
+      "S11"
+    ],
+    "corroborator": [
+      "S17",
+      "S18",
+      "S21",
+      "S22"
+    ],
+    "text-commands": [
+      "S20"
+    ]
+  },
+  "fragments": {
+    "decisions-5-5": [
+      "S1",
+      "S2",
+      "S3",
+      "S4",
+      "S6",
+      "S16"
+    ],
+    "traps": [
+      "S1",
+      "S3",
+      "S5",
+      "S6"
+    ],
+    "crosswalk": [
+      "S16"
+    ],
+    "source-lists": [
+      "S17",
+      "S18"
+    ],
+    "criterion-4": [
+      "S1",
+      "S6",
+      "S13"
+    ],
+    "criterion-3": [
+      "S1",
+      "S5",
+      "S7",
+      "S8",
+      "S9"
+    ],
+    "discovery": [
+      "S21"
+    ],
+    "text-commands": [
+      "S20"
+    ],
+    "integrations": [
+      "S21",
+      "S22",
+      "S23",
+      "S24"
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "criterion-7",
+  "version": 1,
+  "rules": [
+    "C7-critical-role",
+    "T-title-only"
+  ],
+  "text": [
+    "Criterion 7 (O-1A 7, EB-1A viii): critical or essential role for an organization with a distinguished reputation.",
+    "Counts (C7-critical-role): founder of an incorporated company with governance documents; a well-funded startup counts as a distinguished organization, strengthened by funding, accelerator or press.",
+    "Rejected (T-title-only): a title without evidence about the organization."
+  ]
+}

@@ -1,0 +1,10 @@
+[
+  {
+    "mode": "hallucination",
+    "constraint": 3,
+    "title": "Hallucinated figure discarded",
+    "detail": "{\"sentence\":\"Signal & Noise reaches 3,000,000 readers every month.\",\"url\":\"https://signalnoise.example/about\",\"value\":3000000}",
+    "traceId": "tr_a9f22416-3b4f-46f4-b0d8-17b164f0e4db",
+    "fingerprint": "hallucination:Hallucinated figure discarded"
+  }
+]

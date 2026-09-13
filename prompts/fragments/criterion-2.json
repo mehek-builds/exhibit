@@ -1,0 +1,14 @@
+{
+  "name": "criterion-2",
+  "version": 1,
+  "rules": [
+    "C2-selective-membership",
+    "T-open-membership"
+  ],
+  "text": [
+    "Criterion 2 (O-1A 2, EB-1A ii): membership in associations requiring outstanding achievement, judged by recognized experts.",
+    "Counts (C2-selective-membership): a fellowship or association with selective criteria; YC or accelerator acceptance (decisions-5-5); IADAS; merit-based open-source organization membership; ownership of a repo with a merit-based contributor community.",
+    "Rejected (T-open-membership): memberships anyone can buy or join without review; open chat communities.",
+    "Signals: acceptance emails with stated criteria; program pages."
+  ]
+}

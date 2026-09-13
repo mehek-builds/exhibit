@@ -1,0 +1,66 @@
+{
+  "exhibit_id": "EX-1-001",
+  "key": "url:forgeaccel.example/batches/f26",
+  "criteria": [
+    1,
+    2
+  ],
+  "eb1a_criteria": [
+    "i",
+    "ii"
+  ],
+  "status": "qualifying",
+  "eb1a_status": "qualifying",
+  "comparable": false,
+  "comparable_for": [],
+  "rule_id": "D-accelerator-acceptance",
+  "metrics": {},
+  "title": "Congratulations: Loomwork is accepted to Forge Accelerator Batch F26",
+  "issuer": "forgeaccel.example",
+  "event_date": "2026-02-20",
+  "captured_at": "2026-09-13T18:00:00.000Z",
+  "sources": [
+    {
+      "app": "gmail",
+      "id": "m-accel",
+      "url": "https://forgeaccel.example/batches/f26"
+    }
+  ],
+  "artifact_path": "01-awards/EX-1-001/",
+  "sha256": "f54dde3ccd8b59d16b60982b6915a814d0abbb2777d13583f9381cf8412bc06a",
+  "reason": "Accelerator acceptance counts under both #1 awards and #2 membership (5.5).",
+  "version": 1,
+  "supersedes": null,
+  "people": [
+    {
+      "name": "Sam Ortiz",
+      "email": "sam@forgeaccel.example",
+      "domain": "forgeaccel.example"
+    }
+  ],
+  "render_sha256": "1d9e8998eab240c0880efd053fdf43a9db05939da198d7365df0b9e2c870e7d9",
+  "member_sha256": {},
+  "checks": [
+    {
+      "name": "original_date",
+      "pass": true,
+      "detail": "from gmail source metadata"
+    },
+    {
+      "name": "issuer",
+      "pass": true,
+      "detail": "forgeaccel.example"
+    },
+    {
+      "name": "language",
+      "pass": true,
+      "detail": "English"
+    },
+    {
+      "name": "quote",
+      "pass": true,
+      "detail": "exact-substring quote verified before mapping"
+    }
+  ],
+  "quote": "Congratulations: Loomwork is accepted to Forge Accelerator Batch F26"
+}

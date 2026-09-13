@@ -1,0 +1,20 @@
+{
+  "name": "verifier-checks",
+  "version": 1,
+  "rules": [
+    "V-no-source-date",
+    "V-non-english",
+    "V-quote-not-found",
+    "V-issuer-unknown",
+    "N-unmapped",
+    "R-not-evidence"
+  ],
+  "text": [
+    "Verifier checks. Any failed check downgrades an item to needs_attorney with the failed check named; it never silently passes.",
+    "Original date from the source headers or metadata, never a forward, capture time or the model (V-no-source-date when none exists).",
+    "Issuer from the sender domain or page, not the display name (V-issuer-unknown).",
+    "Every quote must be an exact substring of the redacted item (V-quote-not-found).",
+    "Items not in English are kept for the attorney (V-non-english).",
+    "A candidate that fits no rule is needs_attorney (N-unmapped). Non-evidence is R-not-evidence."
+  ]
+}

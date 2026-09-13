@@ -1,0 +1,64 @@
+{
+  "exhibit_id": "EX-1-003",
+  "key": "url:risingbuilders.example/2026",
+  "criteria": [
+    1
+  ],
+  "eb1a_criteria": [
+    "i"
+  ],
+  "status": "needs_attorney",
+  "eb1a_status": "needs_attorney",
+  "comparable": false,
+  "comparable_for": [],
+  "rule_id": "C1-no-selection-criteria",
+  "metrics": {},
+  "title": "You've been named a 2026 Rising Builder",
+  "issuer": "risingbuilders.example",
+  "event_date": "2026-06-20",
+  "captured_at": "2026-09-13T18:00:00.000Z",
+  "sources": [
+    {
+      "app": "gmail",
+      "id": "m-rising",
+      "url": "https://risingbuilders.example/2026"
+    }
+  ],
+  "artifact_path": "needs-attorney/EX-1-003/",
+  "sha256": "d28bdc5bfb98801c6c0c8818151055874a2958a1fd06df1241fb75a22b98aaad",
+  "reason": "The issuer states no selection criteria.",
+  "version": 1,
+  "supersedes": null,
+  "people": [
+    {
+      "name": "Rising Builders",
+      "email": "hello@risingbuilders.example",
+      "domain": "risingbuilders.example"
+    }
+  ],
+  "render_sha256": "84afea0b05f4b005ce76d8f2f38a645ccccaaf2e467aa2d3372c0a5036cdaef1",
+  "member_sha256": {},
+  "checks": [
+    {
+      "name": "original_date",
+      "pass": true,
+      "detail": "from gmail source metadata"
+    },
+    {
+      "name": "issuer",
+      "pass": true,
+      "detail": "risingbuilders.example"
+    },
+    {
+      "name": "language",
+      "pass": true,
+      "detail": "English"
+    },
+    {
+      "name": "quote",
+      "pass": true,
+      "detail": "exact-substring quote verified before mapping"
+    }
+  ],
+  "quote": "You've been named a 2026 Rising Builder"
+}

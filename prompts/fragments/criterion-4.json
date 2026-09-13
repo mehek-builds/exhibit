@@ -1,0 +1,22 @@
+{
+  "name": "criterion-4",
+  "version": 1,
+  "rules": [
+    "C4-service-proof",
+    "C4-invite-unanswered",
+    "C4-awaiting-service",
+    "T-invite-declined",
+    "C4-event-cancelled",
+    "T-mentor-not-judge",
+    "D-student-hackathon-judging",
+    "D-code-review-comparable",
+    "C4-review-below-threshold"
+  ],
+  "text": [
+    "Criterion 4 (O-1A 4, EB-1A iv): participation as a judge of the work of others in the same or an allied field.",
+    "Counts (C4-service-proof): an invitation plus proof of service: a calendar event that occurred, the judging page listing the founder, a thank-you after the event, or a judging certificate. Judging any hackathon counts, student hackathons included (D-student-hackathon-judging). Judging for recognized award programs counts. Code reviews on popular open-source repos (at least 1,000 stars, not the founder own repo) count as comparable evidence (D-code-review-comparable).",
+    "Building: an invitation never answered (C4-invite-unanswered); an accepted invitation whose event has not happened (C4-awaiting-service); an event that was cancelled (C4-event-cancelled); a review on a repo below the threshold (C4-review-below-threshold).",
+    "Rejected: an invitation declined (T-invite-declined); attending as a participant or mentor without evaluating anyone (T-mentor-not-judge).",
+    "Signals: Gmail invites, certificates and thank-yous; Calendar events; event pages; GitHub reviews on other people repos."
+  ]
+}

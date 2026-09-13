@@ -1,0 +1,24 @@
+[
+  {
+    "fragment": "decisions-5-5",
+    "description": "Accelerator acceptance counts under #1 and #2 (rule decision, 2026-09-13)",
+    "dependents": [
+      "letter-drafter",
+      "mapper",
+      "scorecard-writer"
+    ],
+    "scenarios": [
+      "S1",
+      "S2",
+      "S3",
+      "S4",
+      "S6",
+      "S10",
+      "S11",
+      "S16"
+    ],
+    "result": "8/8 scenarios green",
+    "release": "dev",
+    "at": "2026-09-13T17:59:47.771Z"
+  }
+]

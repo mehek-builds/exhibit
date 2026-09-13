@@ -1,0 +1,15 @@
+{
+  "name": "criterion-6",
+  "version": 1,
+  "rules": [
+    "C6-scholarly",
+    "D-talk-comparable",
+    "C6-talk-not-major"
+  ],
+  "text": [
+    "Criterion 6 (O-1A 6, EB-1A vi): authorship of scholarly articles in professional journals or major media.",
+    "Counts: a published paper or benchmark (C6-scholarly); articles in trade publications; talks at major conferences as comparable evidence (D-talk-comparable).",
+    "Needs attorney: a talk not shown to be at a major conference (C6-talk-not-major).",
+    "Rejected: personal blog and LinkedIn posts."
+  ]
+}

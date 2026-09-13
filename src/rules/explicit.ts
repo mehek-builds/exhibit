@@ -1,0 +1,257 @@
+import type { Classification, Eb1Criterion, FounderProfile, Mapping, O1Criterion, RedactedItem, Status } from '../types.js';
+import { domainOf, hostMatches } from '../util.js';
+
+// Traps and the 2026-09-13 rule decisions (PRD 5.5) are explicit code, never model judgment (6.4).
+// Each rule id must exist in a fragment under prompts/fragments; test/rules.test.ts enforces it.
+
+export const O1_TO_EB1: Record<O1Criterion, Eb1Criterion> = { 1: 'i', 2: 'ii', 3: 'iii', 4: 'iv', 5: 'v', 6: 'vi', 7: 'viii', 8: 'ix' };
+
+export interface RuleOptions {
+  /** Rule ids switched off. Used only by the mutation check (PRD 12.2). */
+  disabled?: readonly string[];
+}
+
+export const PATTERNS = {
+  funding:
+    /\b(SAFE|simple agreement for future equity|note purchase agreement|convertible note|priced round|(?:pre-)?seed round|investment (?:has )?closed|wired? (?:the )?(?:investment|funds))\b/i,
+  equity: /\b(stock purchase agreement|founder (?:stock|shares)|restricted stock (?:purchase|award)|equity grant|option grant)\b/i,
+  futurePay: /\b(offer letter|employment agreement|consulting agreement)\b/i,
+  futurePayTiming: /\b(will (?:be paid|receive|earn)|start(?:ing)? date|effective (?:on|from)|begins? on)\b/i,
+  accelerator:
+    /\b(?:accepted|admitted|selected|welcome)\b[^\n]{0,90}\b(?:accelerator|batch|cohort|Y Combinator)\b|\b(?:accelerator|batch)\b[^\n]{0,90}\b(?:accepted|admitted|selected)\b/i,
+  pressRelease: /\b(FOR IMMEDIATE RELEASE|press release|distributed (?:by|via)|newswire)\b/i,
+  paidPlacement: /\b(sponsored (?:content|post|placement)|paid placement|advertorial|promoted content)\b/i,
+  authored: /\b(your (?:story|article|post|essay) (?:was|has been|is) (?:published|live|now live)|you published)\b/i,
+  scholarly: /\b(doi\.org|proceedings of|peer[- ]reviewed|journal of|arxiv\.org)\b/i,
+  participation: /\b(certificate of participation|thanks? (?:you )?for participating)\b/i,
+  payToEnter: /\b(entry fee|nomination fee|self-nominat\w*|pay to (?:enter|apply))\b/i,
+  openMembership: /\b(anyone can join|open to all|membership fee|join (?:our|the) community)\b/i,
+  exhibition: /\b(exhibited at|on display at|gallery show|art (?:exhibition|showcase))\b/i,
+  revenue: /\b(revenue|MRR|ARR|gross sales)\b/i,
+  pay: /\b(salary|base pay|compensation|stock|equity|shares|SAFE|investment)\b/i,
+} as const;
+
+function enabled(opts: RuleOptions | undefined, id: string): boolean {
+  return !(opts?.disabled ?? []).includes(id);
+}
+
+/** An exact line of `text` around the first match, so the quote check (6.4) always holds. */
+export function quoteFor(text: string, re: RegExp): string | null {
+  const m = re.exec(text);
+  if (!m || m.index === undefined) return null;
+  const start = text.lastIndexOf('\n', m.index) + 1;
+  const endIdx = text.indexOf('\n', m.index);
+  const line = text.slice(start, endIdx < 0 ? text.length : endIdx);
+  const trimmed = line.trim();
+  return trimmed.length > 280 ? trimmed.slice(0, 280) : trimmed;
+}
+
+export function mapping(
+  criteria: O1Criterion[],
+  status: Status,
+  rule_id: string,
+  reason: string,
+  quote: string,
+  extra: Partial<Pick<Mapping, 'eb1a_status' | 'eb1a_criteria' | 'comparable_for' | 'decided_by'>> = {},
+): Mapping {
+  return {
+    criteria,
+    eb1a_criteria: extra.eb1a_criteria ?? criteria.map((c) => O1_TO_EB1[c]),
+    status,
+    eb1a_status: extra.eb1a_status ?? status,
+    comparable_for: extra.comparable_for ?? [],
+    rule_id,
+    reason,
+    quote,
+    decided_by: extra.decided_by ?? 'rule',
+  };
+}
+
+export function fullText(item: Pick<RedactedItem, 'title' | 'text'>): string {
+  return `${item.title}\n${item.text}`;
+}
+
+export function isSelfAuthored(item: RedactedItem, profile: FounderProfile): boolean {
+  const authorEmail = item.author?.email?.toLowerCase();
+  if (authorEmail && profile.emails.map((e) => e.toLowerCase()).includes(authorEmail)) return true;
+  if (item.app === 'linkedin' && item.meta.authorType === 'self') return true;
+  return PATTERNS.authored.test(fullText(item));
+}
+
+interface ExplicitRule {
+  id: string;
+  /** Additional ids that the same code path implements (disabling any of them disables the rule). */
+  alsoImplements?: string[];
+  apply(item: RedactedItem, cls: Classification, profile: FounderProfile): Mapping | null;
+}
+
+const RULES: ExplicitRule[] = [
+  {
+    id: 'D-funding-remuneration',
+    alsoImplements: ['T-funding-not-award'],
+    apply(item, cls) {
+      if (cls.kind === 'press_about' || cls.kind === 'authored') return null;
+      const q = quoteFor(fullText(item), PATTERNS.funding);
+      if (!q) return null;
+      return mapping(
+        [8],
+        'qualifying',
+        'D-funding-remuneration',
+        'Venture funding never counts as an award (#1); it counts toward #8 remuneration (5.5).',
+        q,
+      );
+    },
+  },
+  {
+    id: 'D-equity-comparable',
+    apply(item) {
+      const q = quoteFor(fullText(item), PATTERNS.equity);
+      if (!q) return null;
+      return mapping([8], 'qualifying', 'D-equity-comparable', 'Founder equity in place of salary counts toward #8 as comparable evidence (5.5).', q, {
+        comparable_for: [8],
+      });
+    },
+  },
+  {
+    id: 'X-future-pay',
+    apply(item) {
+      const text = fullText(item);
+      const q = quoteFor(text, PATTERNS.futurePay);
+      if (!q || !PATTERNS.futurePayTiming.test(text)) return null;
+      return mapping([8], 'qualifying', 'X-future-pay', 'A signed contract for future pay counts for O-1A #8 ("will command"); EB-1A needs pay already earned, so it counts once paid (5.2).', q, {
+        eb1a_status: 'building',
+      });
+    },
+  },
+  {
+    id: 'D-accelerator-acceptance',
+    apply(item, cls) {
+      if (cls.kind !== 'acceptance' && cls.kind !== 'award') return null;
+      const q = quoteFor(fullText(item), PATTERNS.accelerator);
+      if (!q) return null;
+      return mapping([1, 2], 'qualifying', 'D-accelerator-acceptance', 'Accelerator acceptance counts under both #1 awards and #2 membership (5.5).', q);
+    },
+  },
+  {
+    id: 'T-press-release',
+    apply(item) {
+      const q = quoteFor(fullText(item), PATTERNS.pressRelease);
+      if (!q) return null;
+      return mapping([3], 'rejected', 'T-press-release', 'A press release is not published material about the person (#3).', q);
+    },
+  },
+  {
+    id: 'T-paid-placement',
+    apply(item) {
+      const q = quoteFor(fullText(item), PATTERNS.paidPlacement);
+      if (!q) return null;
+      return mapping([3], 'rejected', 'T-paid-placement', 'A paid placement is not published material about the person (#3).', q);
+    },
+  },
+  {
+    id: 'T-self-authored-not-press',
+    apply(item, _cls, profile) {
+      if (!isSelfAuthored(item, profile)) return null;
+      const text = fullText(item);
+      if (PATTERNS.scholarly.test(text)) {
+        const q = quoteFor(text, PATTERNS.scholarly)!;
+        return mapping([6], 'qualifying', 'C6-scholarly', 'Scholarly authorship counts under #6; it is never press about the person (#3).', q);
+      }
+      const q = quoteFor(text, PATTERNS.authored) ?? item.title;
+      return mapping([3], 'rejected', 'T-self-authored-not-press', "The founder's own article or post is not published material about her (#3), and it is not scholarly (#6).", q);
+    },
+  },
+  {
+    id: 'T-participation-certificate',
+    apply(item) {
+      const q = quoteFor(fullText(item), PATTERNS.participation);
+      if (!q) return null;
+      return mapping([1], 'rejected', 'T-participation-certificate', 'A participation certificate is not a prize for excellence (#1).', q);
+    },
+  },
+  {
+    id: 'T-pay-to-enter',
+    apply(item) {
+      const q = quoteFor(fullText(item), PATTERNS.payToEnter);
+      if (!q) return null;
+      return mapping([1], 'rejected', 'T-pay-to-enter', 'Self-nominated or pay-to-enter recognition is not a competitive award (#1).', q);
+    },
+  },
+  {
+    id: 'T-open-membership',
+    apply(item, cls) {
+      if (cls.kind !== 'acceptance') return null;
+      const q = quoteFor(fullText(item), PATTERNS.openMembership);
+      if (!q) return null;
+      return mapping([2], 'rejected', 'T-open-membership', 'Membership anyone can join without review does not require outstanding achievement (#2).', q);
+    },
+  },
+  {
+    id: 'X-exhibition-eb1a-only',
+    apply(item) {
+      const q = quoteFor(fullText(item), PATTERNS.exhibition);
+      if (!q) return null;
+      return mapping([], 'rejected', 'X-exhibition-eb1a-only', 'Display at an exhibition counts for EB-1A (vii) only; the O-1A has no counterpart (5.2).', q, {
+        eb1a_criteria: ['vii'],
+        eb1a_status: 'qualifying',
+      });
+    },
+  },
+  {
+    id: 'T-revenue-not-pay',
+    apply(item, cls) {
+      if (cls.kind !== 'remuneration') return null;
+      const text = fullText(item);
+      const q = quoteFor(text, PATTERNS.revenue);
+      if (!q || /\b(salary|equity|stock|shares)\b/i.test(text)) return null;
+      return mapping([8], 'rejected', 'T-revenue-not-pay', 'Company revenue is not personal remuneration (#8).', q);
+    },
+  },
+];
+
+export const EXPLICIT_RULE_IDS: string[] = RULES.flatMap((r) => [r.id, ...(r.alsoImplements ?? [])]);
+
+export function applyExplicitRules(item: RedactedItem, cls: Classification, profile: FounderProfile, opts?: RuleOptions): Mapping | null {
+  for (const rule of RULES) {
+    if (![rule.id, ...(rule.alsoImplements ?? [])].every((id) => enabled(opts, id))) continue;
+    const hit = rule.apply(item, cls, profile);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * Invariants applied to every model mapping (6.4): a model can never file funding as an award,
+ * the founder's own writing as press, or split an accelerator acceptance.
+ */
+export function enforceInvariants(m: Mapping, item: RedactedItem, profile: FounderProfile, opts?: RuleOptions): Mapping {
+  const text = fullText(item);
+  let out: Mapping = { ...m, criteria: [...m.criteria], eb1a_criteria: [...m.eb1a_criteria] };
+  const drop = (c: O1Criterion, why: string) => {
+    if (!out.criteria.includes(c)) return;
+    out.criteria = out.criteria.filter((x) => x !== c);
+    out.eb1a_criteria = out.eb1a_criteria.filter((x) => x !== O1_TO_EB1[c]);
+    out.reason = `${out.reason} ${why}`.trim();
+  };
+  if (enabled(opts, 'T-funding-not-award') && PATTERNS.funding.test(text)) {
+    drop(1, 'Funding is never an award (T-funding-not-award).');
+    if (out.criteria.length === 0 && enabled(opts, 'D-funding-remuneration')) {
+      out = mapping([8], 'qualifying', 'D-funding-remuneration', 'Funding counts toward #8 remuneration (5.5).', quoteFor(text, PATTERNS.funding)!);
+    }
+  }
+  if (enabled(opts, 'T-self-authored-not-press') && isSelfAuthored(item, profile)) {
+    drop(3, "The founder's own writing is never press about her (T-self-authored-not-press).");
+  }
+  if (out.criteria.length === 0 && out.eb1a_criteria.length === 0 && out.status !== 'rejected') {
+    out.status = 'rejected';
+    out.eb1a_status = 'rejected';
+  }
+  return out;
+}
+
+/** True when an item comes from the founder's own company domain (5.3 self-sourced warning). */
+export function isSelfSourced(domain: string | null, profile: FounderProfile): boolean {
+  return !!domain && hostMatches(domain, profile.domain);
+}
+
+export { domainOf };

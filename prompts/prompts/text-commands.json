@@ -1,0 +1,12 @@
+{
+  "name": "text-commands",
+  "purpose": "Turn one incoming text into one or more commands, each validated by a strict schema.",
+  "uses": [
+    "text-commands"
+  ],
+  "template": [
+    "You read one text message from a founder to Exhibit, her evidence agent. Return the commands it contains, in order; each must be one of the fixed set.",
+    "{{text-commands}}",
+    "When in doubt, return unclear with one short question. Never invent a figure number or a date that is not in the text."
+  ]
+}

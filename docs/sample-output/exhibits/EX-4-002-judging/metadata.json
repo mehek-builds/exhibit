@@ -1,0 +1,75 @@
+{
+  "exhibit_id": "EX-4-002",
+  "key": "judging:buildnight.example",
+  "criteria": [
+    4
+  ],
+  "eb1a_criteria": [
+    "iv"
+  ],
+  "status": "qualifying",
+  "eb1a_status": "qualifying",
+  "comparable": false,
+  "comparable_for": [],
+  "rule_id": "C4-service-proof",
+  "metrics": {
+    "submissions_judged": 40,
+    "observed_at": "2026-09-13"
+  },
+  "title": "Would you judge Spring Build Night?",
+  "issuer": "buildnight.example",
+  "event_date": "2026-03-14",
+  "captured_at": "2026-09-13T18:00:00.000Z",
+  "sources": [
+    {
+      "app": "gmail",
+      "id": "m-bn-invite",
+      "url": null
+    },
+    {
+      "app": "gmail",
+      "id": "m-bn-cert",
+      "url": null
+    },
+    {
+      "app": "calendar",
+      "id": "ev-bn",
+      "url": "https://buildnight.example/spring"
+    }
+  ],
+  "artifact_path": "04-judging/EX-4-002/",
+  "sha256": "2283a91b75615e87723ab4f2e98952a176be8c85674577778e01cf0b0c94f625",
+  "reason": "Invitation accepted and service proven (event occurred, thank-you or certificate).",
+  "version": 1,
+  "supersedes": null,
+  "people": [
+    {
+      "name": "Priya Raman",
+      "email": "priya@buildnight.example",
+      "domain": "buildnight.example"
+    }
+  ],
+  "render_sha256": "2cd24ceb4444aeab319a79ee8058a842668aeafbc8c4fced55087f728d2efc94",
+  "member_sha256": {
+    "member-gmail-m-bn-cert.eml": "e4a3dbda959a23bc16e847b11e0205f35919c5d85f604654e27d3c6d3b5dd8fb",
+    "member-calendar-ev-bn.json": "ce4d6b75a930a75f9f04748be146a683dec707f6374f8b9b6cd609c0336e17a6"
+  },
+  "checks": [
+    {
+      "name": "invitation",
+      "pass": true,
+      "detail": "invited 2026-02-02"
+    },
+    {
+      "name": "accepted",
+      "pass": true,
+      "detail": "founder accepted"
+    },
+    {
+      "name": "proof_of_service",
+      "pass": true,
+      "detail": "certificate 2026-03-16"
+    }
+  ],
+  "quote": "Would you judge Spring Build Night?"
+}

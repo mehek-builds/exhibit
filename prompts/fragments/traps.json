@@ -1,0 +1,11 @@
+{
+  "name": "traps",
+  "version": 1,
+  "rules": [
+    "T-funding-not-award"
+  ],
+  "text": [
+    "Known traps. A trap filed as qualifying is the worst failure.",
+    "SAFE or funding as an award (T-funding-not-award). Self-authored content as press (T-self-authored-not-press). A press release or paid placement as press (T-press-release, T-paid-placement). An unanswered or declined invite as judging (C4-invite-unanswered, T-invite-declined). Stars from the founder own accounts (T-own-stars). Company revenue as personal pay (T-revenue-not-pay)."
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "release": "dev",
+  "at": "2026-09-13T17:59:47.770Z",
+  "fragments": {
+    "criterion-1": "18982dc062372edec3288be42327f9bb817a95420a7597017a8da02b9e84756b",
+    "criterion-2": "12311c404b8f3b636708fa6e8611f681af22354223a39276db5b16f4a58d041c",
+    "criterion-3": "d97c34562cca57cfe1b58cd40fddc94c592cb8ac412b90e346d25b3cdcc2ea51",
+    "criterion-4": "7a04bc80a4638f34699900c0c267e9e5085ff06d238e16f046b6cae1c2b2198c",
+    "criterion-5": "b58f5deb03a6d50dd6218db100317684fb07db4698533468fc20dc6bd9b46627",
+    "criterion-6": "4554ec11384e60d37f90fadd109d27af07f081b4a48c6172dfe12b6bd7b26093",
+    "criterion-7": "89dc40bc49c7207a8cedaff65f59890b36a13ba51de8623829e191ddeba5a30d",
+    "criterion-8": "93950f92a4daca968c7786cfd71131302e7f1edb62d13008e32cb1121b137432",
+    "crosswalk": "b5082aab053bac6bbb10c780f59f236a619620ffa596dd8f16bcb1393821d982",
+    "decisions-5-5": "a3403f03579d05e01f97a91c591d2b5356d45ac4b8afb28a3abcf6beb5f38dc8",
+    "discovery": "df9f1f3f0430fd3ab1fa8986792fb2044d76d60bcce4dbe3062509dbaf856f3a",
+    "figures-per-criterion": "b6fa21176341bf89fa8d9318fd4479f30c881428c46b3d870980bb18ff1780dd",
+    "integrations": "d8555e6274f4a9f1da47e186968346cf5bd72191aea5eadf5e169f63480c8791",
+    "redaction": "9954e7a25eddaf11265ee6022c35de9611f2113257a68290494f5b8a5530a929",
+    "source-lists": "8ea7db4a7644b9bfe7254b6d899cd484fa19f69655c23411ae8ddb4213198808",
+    "text-commands": "79a6c9ea29c52564d5b0c2a6d819e778520e2913efdb6fffe0f66b9346229f38",
+    "traps": "90475d3d40f8c92fe1a7f1507f4442622e44f0a46ef1ed4979ad0689bdef9963",
+    "verifier-checks": "11cbad703f1dc2ecabd59e67766dca56457a5b7b89f28806b7f189325b9aebe4"
+  },
+  "scenarios": {
+    "S1": {
+      "attempts": 3,
+      "passed": 3
+    },
+    "S2": {
+      "attempts": 3,
+      "passed": 3
+    },
+    "S3": {
+      "attempts": 3,
+      "passed": 3
+    },
+    "S4": {
+      "attempts": 3,
+      "passed": 3
+    },
+    "S6": {
+      "attempts": 3,
+      "passed": 3
+    },
+    "S10": {
+      "attempts": 3,
+      "passed": 3
+    },
+    "S11": {
+      "attempts": 3,
+      "passed": 3
+    },
+    "S16": {
+      "attempts": 3,
+      "passed": 3
+    }
+  }
+}

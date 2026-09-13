@@ -1,0 +1,15 @@
+{
+  "name": "criterion-5",
+  "version": 1,
+  "rules": [
+    "C5-adoption",
+    "C5-below-threshold",
+    "T-own-stars"
+  ],
+  "text": [
+    "Criterion 5 (O-1A 5, EB-1A v): original contributions of major significance.",
+    "Counts (C5-adoption): shipped work adopted by others: at least 100 stars from accounts other than the founder own, or at least 10 dependents; customer usage; press about the contribution; patents; cited research. Stars and forks from others also count toward #3 as comparable evidence.",
+    "Building: adoption below the threshold (C5-below-threshold); a repo starred mostly by the founder own accounts, which are excluded (T-own-stars).",
+    "Rejected: commit volume alone; unshipped repos."
+  ]
+}

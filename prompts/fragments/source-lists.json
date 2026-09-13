@@ -1,0 +1,63 @@
+{
+  "name": "source-lists",
+  "version": 1,
+  "rules": [],
+  "text": [
+    "Valid sources only. Primary: the entity the figure is about, on its own official domain, or the official record-keeper for that fact. Verifier: an independent auditor, index, registry or official dataset.",
+    "Never valid: statistics aggregators and SEO sites, blogs, forums, Wikipedia (follow its citation instead), modeled traffic estimators (Similarweb, Semrush), AI-generated pages, press releases distributed by third parties, and the founder own posts. A news story repeating a media-kit number is not a source.",
+    "Every figure needs its primary source plus a second valid source. When a verifier covers the fact the second source must be the verifier (independently confirmed); otherwise a separate official document from the same issuer (issuer-confirmed). Numbers must match within 25 percent and describe the same measure. Figures older than 12 months are re-researched.",
+    "Structured sources come first: the verifier APIs (OpenAlex, Crossref, Semantic Scholar, BLS, O*NET, ecosyste.ms, Hugging Face, SEC EDGAR) are queried before any web search, and web search is used only for figures no API holds. Official record-keepers (BLS, O*NET, SEC, USPTO) count as primary sources for their own records."
+  ],
+  "data": {
+    "verifiers": [
+      "auditedmedia.com",
+      "sec.gov",
+      "scimagojr.com",
+      "scholar.google.com",
+      "crossref.org",
+      "api.crossref.org",
+      "bls.gov",
+      "careeronestop.org",
+      "npmjs.com",
+      "registry.npmjs.org",
+      "pypi.org",
+      "ecosyste.ms",
+      "libraries.io",
+      "devpost.com",
+      "mlh.io",
+      "openalex.org",
+      "api.openalex.org",
+      "semanticscholar.org",
+      "api.semanticscholar.org",
+      "huggingface.co",
+      "onetcenter.org",
+      "services.onetcenter.org",
+      "api.bls.gov",
+      "packages.ecosyste.ms",
+      "repos.ecosyste.ms"
+    ],
+    "synthetic_verifiers": [
+      "amr.example",
+      "hackindex.example",
+      "podaudit.example"
+    ],
+    "never": [
+      "similarweb.com",
+      "semrush.com",
+      "wikipedia.org",
+      "statista.com",
+      "medium.com",
+      "substack.com",
+      "prnewswire.com",
+      "businesswire.com"
+    ],
+    "agreement_tolerance": 0.25,
+    "freshness_months": 12,
+    "record_keepers": [
+      "bls.gov",
+      "onetcenter.org",
+      "sec.gov",
+      "uspto.gov"
+    ]
+  }
+}

@@ -1,0 +1,232 @@
+[
+  {
+    "from": "classifier",
+    "to": "redaction",
+    "kind": "uses"
+  },
+  {
+    "from": "classifier",
+    "to": "criterion-1",
+    "kind": "uses"
+  },
+  {
+    "from": "classifier",
+    "to": "criterion-2",
+    "kind": "uses"
+  },
+  {
+    "from": "classifier",
+    "to": "criterion-3",
+    "kind": "uses"
+  },
+  {
+    "from": "classifier",
+    "to": "criterion-4",
+    "kind": "uses"
+  },
+  {
+    "from": "classifier",
+    "to": "criterion-5",
+    "kind": "uses"
+  },
+  {
+    "from": "classifier",
+    "to": "criterion-6",
+    "kind": "uses"
+  },
+  {
+    "from": "classifier",
+    "to": "criterion-7",
+    "kind": "uses"
+  },
+  {
+    "from": "classifier",
+    "to": "criterion-8",
+    "kind": "uses"
+  },
+  {
+    "from": "classifier",
+    "to": "discovery",
+    "kind": "uses"
+  },
+  {
+    "from": "corroborator",
+    "to": "source-lists",
+    "kind": "uses"
+  },
+  {
+    "from": "corroborator",
+    "to": "figures-per-criterion",
+    "kind": "uses"
+  },
+  {
+    "from": "corroborator",
+    "to": "integrations",
+    "kind": "uses"
+  },
+  {
+    "from": "letter-drafter",
+    "to": "criterion-1",
+    "kind": "uses"
+  },
+  {
+    "from": "letter-drafter",
+    "to": "criterion-2",
+    "kind": "uses"
+  },
+  {
+    "from": "letter-drafter",
+    "to": "criterion-3",
+    "kind": "uses"
+  },
+  {
+    "from": "letter-drafter",
+    "to": "criterion-4",
+    "kind": "uses"
+  },
+  {
+    "from": "letter-drafter",
+    "to": "criterion-5",
+    "kind": "uses"
+  },
+  {
+    "from": "letter-drafter",
+    "to": "criterion-6",
+    "kind": "uses"
+  },
+  {
+    "from": "letter-drafter",
+    "to": "criterion-7",
+    "kind": "uses"
+  },
+  {
+    "from": "letter-drafter",
+    "to": "criterion-8",
+    "kind": "uses"
+  },
+  {
+    "from": "letter-drafter",
+    "to": "decisions-5-5",
+    "kind": "uses"
+  },
+  {
+    "from": "mapper",
+    "to": "criterion-1",
+    "kind": "uses"
+  },
+  {
+    "from": "mapper",
+    "to": "criterion-2",
+    "kind": "uses"
+  },
+  {
+    "from": "mapper",
+    "to": "criterion-3",
+    "kind": "uses"
+  },
+  {
+    "from": "mapper",
+    "to": "criterion-4",
+    "kind": "uses"
+  },
+  {
+    "from": "mapper",
+    "to": "criterion-5",
+    "kind": "uses"
+  },
+  {
+    "from": "mapper",
+    "to": "criterion-6",
+    "kind": "uses"
+  },
+  {
+    "from": "mapper",
+    "to": "criterion-7",
+    "kind": "uses"
+  },
+  {
+    "from": "mapper",
+    "to": "criterion-8",
+    "kind": "uses"
+  },
+  {
+    "from": "mapper",
+    "to": "decisions-5-5",
+    "kind": "uses"
+  },
+  {
+    "from": "mapper",
+    "to": "traps",
+    "kind": "uses"
+  },
+  {
+    "from": "mapper",
+    "to": "crosswalk",
+    "kind": "uses"
+  },
+  {
+    "from": "mapper",
+    "to": "verifier-checks",
+    "kind": "uses"
+  },
+  {
+    "from": "mapper",
+    "to": "discovery",
+    "kind": "uses"
+  },
+  {
+    "from": "scorecard-writer",
+    "to": "criterion-1",
+    "kind": "uses"
+  },
+  {
+    "from": "scorecard-writer",
+    "to": "criterion-2",
+    "kind": "uses"
+  },
+  {
+    "from": "scorecard-writer",
+    "to": "criterion-3",
+    "kind": "uses"
+  },
+  {
+    "from": "scorecard-writer",
+    "to": "criterion-4",
+    "kind": "uses"
+  },
+  {
+    "from": "scorecard-writer",
+    "to": "criterion-5",
+    "kind": "uses"
+  },
+  {
+    "from": "scorecard-writer",
+    "to": "criterion-6",
+    "kind": "uses"
+  },
+  {
+    "from": "scorecard-writer",
+    "to": "criterion-7",
+    "kind": "uses"
+  },
+  {
+    "from": "scorecard-writer",
+    "to": "criterion-8",
+    "kind": "uses"
+  },
+  {
+    "from": "scorecard-writer",
+    "to": "crosswalk",
+    "kind": "uses"
+  },
+  {
+    "from": "scorecard-writer",
+    "to": "decisions-5-5",
+    "kind": "uses"
+  },
+  {
+    "from": "text-commands",
+    "to": "text-commands",
+    "kind": "uses"
+  }
+]

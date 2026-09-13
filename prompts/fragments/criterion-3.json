@@ -1,0 +1,17 @@
+{
+  "name": "criterion-3",
+  "version": 1,
+  "rules": [
+    "C3-press-about",
+    "C3-podcast",
+    "T-press-release",
+    "T-paid-placement",
+    "T-self-authored-not-press"
+  ],
+  "text": [
+    "Criterion 3 (O-1A 3, EB-1A iii): published material about the person in major media or trade publications.",
+    "Counts (C3-press-about, C3-podcast): a third-party article, podcast, tech-blog or book mention about the founder, with title, date, author and the outlet readership captured alongside. Stars and forks from others count as comparable evidence (C5-adoption).",
+    "Rejected: articles the founder wrote (T-self-authored-not-press; routed to #6 only if scholarly); press releases (T-press-release) and paid placements (T-paid-placement); posts on the founder own channels.",
+    "Signals: Gmail from publications and reporters; Google Alerts; LinkedIn posts by publications."
+  ]
+}

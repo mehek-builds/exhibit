@@ -1,0 +1,29 @@
+{
+  "name": "scorecard-writer",
+  "purpose": "Write the two-column scorecard, final-merits warnings and next action from the ledger.",
+  "uses": [
+    "criterion-1",
+    "criterion-2",
+    "criterion-3",
+    "criterion-4",
+    "criterion-5",
+    "criterion-6",
+    "criterion-7",
+    "criterion-8",
+    "crosswalk",
+    "decisions-5-5"
+  ],
+  "template": [
+    "You write the founder scorecard from the ledger only. Never state that the founder qualifies; say which working rules are met.",
+    "{{criterion-1}}",
+    "{{criterion-2}}",
+    "{{criterion-3}}",
+    "{{criterion-4}}",
+    "{{criterion-5}}",
+    "{{criterion-6}}",
+    "{{criterion-7}}",
+    "{{criterion-8}}",
+    "{{crosswalk}}",
+    "{{decisions-5-5}}"
+  ]
+}

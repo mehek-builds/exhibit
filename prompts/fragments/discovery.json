@@ -1,0 +1,27 @@
+{
+  "name": "discovery",
+  "version": 1,
+  "rules": [
+    "X-second-identifier",
+    "T-namesake",
+    "X-self-submitted-launch",
+    "N-badge-no-rule",
+    "D-reviewer-judging",
+    "C4-review-assignment-declined",
+    "D-form-d-funding",
+    "C5-patent",
+    "C3-discovered-press",
+    "C5-model-adoption"
+  ],
+  "text": [
+    "Discovered items (GDELT, Podcast Index, Hacker News, Product Hunt, OpenReview, ORCID, Hugging Face, SEC EDGAR, USPTO) pass the same classifier, mapper and verifier as an email.",
+    "X-second-identifier: a discovered item becomes a candidate only if the source names the founder and a second identifier (her company, her handle or a known co-author). T-namesake: a source that names someone with the same name but no second identifier is never an exhibit; it is logged.",
+    "C3-discovered-press: a news article or podcast episode about the founder is #3 after verification, with the outlet readership researched.",
+    "X-self-submitted-launch: Hacker News or Product Hunt posts the founder submitted are #5 context (building), never #3 press.",
+    "N-badge-no-rule: a Product Hunt Product of the Day badge is a #1 candidate, needs_attorney, because no rule decision covers it yet.",
+    "D-reviewer-judging: accepted OpenReview or ORCID reviewer and area-chair roles are #4 qualifying, since peer review is judging the work of others. C4-review-assignment-declined: an assignment for a venue she declined is not judging; building at most.",
+    "C5-model-adoption: Hugging Face downloads and likes on her models are #5 adoption evidence, with the figures through the review queue.",
+    "D-form-d-funding: an SEC EDGAR Form D for her company is #8 remuneration (venture funding counts, 5.5) and #7 context.",
+    "C5-patent: a granted patent or a patent application naming her as inventor is #5."
+  ]
+}

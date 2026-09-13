@@ -1,0 +1,12 @@
+node_modules/
+.exhibit/
+out/
+# Generated eval, mutation and smoke reports; BRIEF.md and docs/ carry the committed summaries.
+reports/
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+coverage/
+.DS_Store
