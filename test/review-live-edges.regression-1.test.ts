@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { listScenarios, runScenarioAttempt } from '../harness/runner.js';
-import { hasCompleteTwilioWebhookEnv } from '../src/commands/serve.js';
+import { hasCompleteTwilioWebhookEnv, twilioPollMilliseconds } from '../src/commands/serve.js';
 
 describe('reviewed live edge cases', () => {
   it('requires all Twilio webhook variables, including the sender', () => {
@@ -12,6 +12,15 @@ describe('reviewed live edge cases', () => {
     };
     expect(hasCompleteTwilioWebhookEnv(complete)).toBe(true);
     expect(hasCompleteTwilioWebhookEnv({ ...complete, TWILIO_SENDER: '' })).toBe(false);
+  });
+
+  it('bounds the Twilio polling timer without changing its short-interval fallback', () => {
+    expect(twilioPollMilliseconds(undefined)).toBe(15_000);
+    expect(twilioPollMilliseconds('0')).toBe(15_000);
+    expect(twilioPollMilliseconds('0.1')).toBe(5_000);
+    expect(twilioPollMilliseconds('5')).toBe(5_000);
+    expect(twilioPollMilliseconds('2147483')).toBe(2_147_483_000);
+    expect(() => twilioPollMilliseconds('2147484')).toThrow(/TWILIO_POLL_SECONDS must be from 5 to 2147483 seconds/);
   });
 
   it('records one pre-send refusal and does not retry it on later runs', async () => {
