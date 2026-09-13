@@ -20,9 +20,11 @@ function chk(name: string, pass: boolean, detail: string): GradeCheck {
   return { name, pass, detail };
 }
 
-// Saturday 23:30 America/Los_Angeles -- quiet hours (22:00-08:00). Note event_date is day-truncated
-// (PRD 6.13/4.1 nudge math), so these times are chosen to stay well before the CodeCraft invite's
-// day (2026-08-30, from E.codecraftUnanswered's fixed mail date) while still being within 7 days of it.
+// Saturday 23:30 America/Los_Angeles -- quiet hours (22:00-08:00). The nudge counts days to the
+// invite's action date (PRD 6.13/4.1): the reply deadline or judging date written in the invite
+// (src/pipeline/inviteDate.ts), falling back to event_date when the text names none. These times
+// stay well before the CodeCraft invite's stated judging date (2026-08-30, in E.codecraftUnanswered's
+// body) while still being within 7 days of it.
 const RUN_A_QUIET = new Date('2026-08-23T06:30:00Z');
 // Sunday 08:30 America/Los_Angeles -- just outside quiet hours; the founder's first inbound text.
 const RUN_B_STATUS = new Date('2026-08-23T15:30:00Z');
