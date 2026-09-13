@@ -81,6 +81,12 @@ function eventCount(m: MatrixResult, kind: string): number {
   return m.attempts.reduce((n, a) => n + (a.metrics?.eventCounts[kind] ?? 0), 0);
 }
 
+function eventResultCount(value: unknown): number {
+  if (Array.isArray(value)) return value.length;
+  const numeric = Number(value ?? 0);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
 function statFor(m: MatrixResult, id: string): ScenarioStats | undefined {
   return m.stats.find((s) => s.scenarioId === id);
 }
@@ -503,8 +509,8 @@ function integrityAndIntegrationsSection(m: MatrixResult): string {
   const timestamps = allEvents(m, 'timestamp');
   const confirmed = timestamps.filter((e) => e.detail.status === 'confirmed').length;
   const verifyEvents = allEvents(m, 'verify');
-  const verifyPass = verifyEvents.reduce((n, e) => n + Number(e.detail.passed ?? 0), 0);
-  const verifyCaught = verifyEvents.reduce((n, e) => n + Number(e.detail.failed ?? 0), 0);
+  const verifyPass = verifyEvents.reduce((n, e) => n + eventResultCount(e.detail.passed), 0);
+  const verifyCaught = verifyEvents.reduce((n, e) => n + eventResultCount(e.detail.failed), 0);
   const archived = allEvents(m, 'archive').filter((e) => e.detail.ok).length;
   const discovery = allEvents(m, 'discovery');
   const bySource = new Map<string, { candidates: number; exhibits: number; rejected: number; merged: number }>();
