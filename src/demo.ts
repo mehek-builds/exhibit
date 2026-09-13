@@ -113,7 +113,7 @@ export async function runDemo(outDir: string): Promise<void> {
       const { DISCOVERY_TIER1_FIXTURES } = await import('../harness/fixtures/discovery-tier1.js');
       const transport = new FixtureTransport(DISCOVERY_TIER1_FIXTURES);
       const gdelt = createGdeltAdapter({ transport });
-      env.deps.extensions = [...(env.deps.extensions ?? []), createDiscoveryExtension({ adapters: [gdelt], alwaysRun: true })];
+      env.deps.extensions = [...(env.deps.extensions ?? []), createDiscoveryExtension({ adapters: [gdelt], alwaysRun: true, transportKind: 'fixture' })];
       discoveryWired = true;
     } catch (err) {
       skip('src/discovery/extension.ts, src/integrations/gdelt.ts or harness/fixtures/discovery-tier1.ts', err);
