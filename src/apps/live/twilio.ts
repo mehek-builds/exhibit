@@ -4,7 +4,8 @@ import type { HttpTransport } from '../../integrations/types.js';
 import { FetchTransport } from '../../integrations/types.js';
 
 // Live Twilio Programmable Messaging adapter (PRD 6.13, 7.3): SMS in the Arga twin, WhatsApp
-// Sandbox live. POST/GET against api.twilio.com with HTTP basic auth (Account SID + auth token);
+// Sandbox live. POST/GET against api.twilio.com with HTTP basic auth: an API key (SID + secret)
+// when set, else the Account SID + auth token. The request URL always names the Account SID.
 // `transport` is swappable for a FixtureTransport in tests, same pattern as src/apps/live/google.ts.
 //
 // Trial limits this adapter must respect at call sites, not enforce itself (PRD 6.13):
@@ -15,7 +16,11 @@ import { FetchTransport } from '../../integrations/types.js';
 
 export interface TwilioApiOptions {
   accountSid: string;
-  authToken: string;
+  /** Account auth token. Required unless `apiKeySid` and `apiKeySecret` are both set. */
+  authToken?: string;
+  /** API key (SK...) and its secret; used for basic auth in place of the auth token when both are set. */
+  apiKeySid?: string;
+  apiKeySecret?: string;
   /** 'whatsapp:+14155238886' for the Sandbox, or a bare E.164 number for SMS. */
   sender: string;
   transport?: HttpTransport;
@@ -69,7 +74,10 @@ function mapMessage(m: TwilioMessageJson): TextMessage {
 export function createTwilioApi(opts: TwilioApiOptions): TwilioApi {
   const transport = opts.transport ?? new FetchTransport();
   const base = `https://api.twilio.com/2010-04-01/Accounts/${opts.accountSid}`;
-  const auth = basicAuth(opts.accountSid, opts.authToken);
+  let auth: string;
+  if (opts.apiKeySid && opts.apiKeySecret) auth = basicAuth(opts.apiKeySid, opts.apiKeySecret);
+  else if (opts.authToken) auth = basicAuth(opts.accountSid, opts.authToken);
+  else throw new Error('createTwilioApi: set authToken, or both apiKeySid and apiKeySecret');
   const minSendIntervalMs = opts.minSendIntervalMs ?? 3000;
   const now = opts.now ?? (() => Date.now());
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
