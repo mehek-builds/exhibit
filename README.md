@@ -57,17 +57,16 @@ npx tsx src/cli.ts verify                  # re-checks every binder file against
 
 ## How it proves itself
 
-Exhibit's proof is a loop across four platforms, each answering a different question (PRD 12.6):
+Exhibit's proof is a loop across three platforms, each answering a different question (PRD 12.6):
 
 - **Arga** (before real data): every behavior is proven first against in-memory twins seeded with a
   synthetic year and known traps (scenarios S1-S26 plus the lifted self-approval scenarios S19,
   S19b and S19-record), 3 graded attempts each, graded from twin end state and prohibited side
   effects, not from Exhibit's own logs. `--backend arga` runs the same matrix against Arga's
   hosted twins when `ARGA_API_KEY` is set (see [docs/ARGA.md](docs/ARGA.md)).
-- **Lemma** (on every run): traces are audited against a local mirror of Lemma's seven failure
-  modes (skipped work, out-of-scope work, instruction violation, integration failure, retry loop,
-  hallucination, communication failure) — `src/observability/audit.ts` runs the same check when a
-  live Lemma project is not connected.
+- **The trace audit** (on every run): `src/observability/audit.ts` audits every run's trace against
+  seven failure modes (skipped work, out-of-scope work, instruction violation, integration failure,
+  retry loop, hallucination, communication failure).
 - **Userlens worth-sending** (at every message to a person): every letter request and every
   proactive text to the founder passes a send/revise/hold gate before anything goes out, and a
   `send` still needs the founder's own approval before Gmail sends it.
@@ -97,8 +96,6 @@ Exhibit's proof is a loop across four platforms, each answering a different ques
   are fictional, and every discovery/verifier-API response used in the harness and demo is a
   **recorded fixture** (`harness/fixtures/*.ts`) replayed through a `FixtureTransport` — never a
   real network call.
-- **Lemma is not connected** unless `LEMMA_API_KEY`/`LEMMA_PROJECT_ID` are set (`.env.example`).
-  Without them, only the local audit mirror runs.
 - **uberprompt itself is not run** — Clera's tool has no public license available to this build.
   Exhibit instead has its own dependents/mutation check (`src/rules/graph.ts`'s `affected()`) over
   the same shared-fragment prompt-graph file format uberprompt targets, so a rule change still gets
@@ -131,7 +128,7 @@ current numbers, so nothing here can go stale.
 
 Live mode is configured entirely through environment variables read by `src/config.ts`; the file
 `.env.example` at the repository root documents every one of them, grouped by area: the founder
-profile, Google OAuth2, GitHub, LinkedIn, Anthropic, Lemma, Arga twin provisioning, the ledger
+profile, Google OAuth2, GitHub, LinkedIn, Anthropic, Arga twin provisioning, the ledger
 path, the Twilio text channel (6.13), the structured verifier APIs and discovery adapters (6.14),
 the tamper-evident binder (Internet Archive/OpenTimestamps), Dropbox Sign, and DeepL. Every
 integration is enabled only when its own credentials are present — nothing turns on silently, and
