@@ -25,11 +25,12 @@ describe('CLI numeric bounds', () => {
   });
 
   it.each([
-    [['eval', '--attempts', '9007199254740992', '--scenario', 'S2'], /positive integer within JavaScript's safe range/],
-    [['watch', '--live', '--interval', '0.0001'], /must resolve to an integer/],
-    [['watch', '--live', '--interval', '2147484'], /must resolve to an integer/],
-    [['serve', '--interval', '0.0001'], /must resolve to an integer/],
-    [['serve', '--interval', '2147484'], /must resolve to an integer/],
+    [['eval', '--attempts', '101', '--scenario', 'S2'], /positive integer from 1 to 100/],
+    [['eval', '--attempts', '9007199254740992', '--scenario', 'S2'], /positive integer from 1 to 100/],
+    [['watch', '--live', '--interval', '59.999'], /must be from 60 to 2147483 seconds/],
+    [['watch', '--live', '--interval', '2147484'], /must be from 60 to 2147483 seconds/],
+    [['serve', '--interval', '59.999'], /must be from 60 to 2147483 seconds/],
+    [['serve', '--interval', '2147484'], /must be from 60 to 2147483 seconds/],
     [['serve', '--port', '0'], /integer from 1 to 65535/],
     [['serve', '--port', '65536'], /integer from 1 to 65535/],
     [['serve', '--port', '3.5'], /integer from 1 to 65535/],

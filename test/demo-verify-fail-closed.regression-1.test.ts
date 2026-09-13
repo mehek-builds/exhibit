@@ -5,6 +5,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cmdVerify, verifyExportedDemo } from '../src/commands/verify.js';
+import { createIntegrityFixtures } from '../harness/fixtures/integrity.js';
+import { encodeOts } from '../src/integrity/ots.js';
+import { stampDigest } from '../src/integrity/opentimestamps.js';
+import { FixtureTransport } from '../src/integrations/types.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const binPath = join(here, '..', 'bin', 'exhibit.mjs');
@@ -76,6 +80,23 @@ describe('exported demo verification fails closed', () => {
     expect(result.failed[0]!.reason).toMatch(/proof could not be read/);
   });
 
+  it('returns one when a valid proof is still pending', async () => {
+    const { outDir, binder } = makeExport({ kind: 'synthetic-fixture', roots: {}, artifacts: ['file.eml'] });
+    const bytes = Buffer.from('pending evidence');
+    const fixtures = createIntegrityFixtures();
+    const { proof } = await stampDigest(createHash('sha256').update(bytes).digest('hex'), {
+      transport: new FixtureTransport(fixtures.fixtures),
+      calendars: ['https://a.pool.opentimestamps.org'],
+    });
+    writeFileSync(join(binder, 'file.eml'), bytes);
+    writeFileSync(join(binder, 'file.eml.ots'), encodeOts(proof));
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    const result = await verifyExportedDemo(outDir);
+    expect(result.pending).toEqual(['file.eml']);
+    await expect(cmdVerify(['--demo', outDir])).resolves.toBe(1);
+  });
+
   it('returns one from cmdVerify and the package binary for malformed exports without live credentials', async () => {
     const { outDir, binder } = makeExport({ kind: 'synthetic-fixture', roots: {}, artifacts: ['file.eml'] });
     writeFileSync(join(binder, 'file.eml'), 'evidence');
@@ -91,3 +112,4 @@ describe('exported demo verification fails closed', () => {
     })).toThrow();
   });
 });
+import { createHash } from 'node:crypto';

@@ -39,4 +39,12 @@ describe('latestEvalSummary regression', () => {
     expect(latestEvalSummary(missingPath)).toBe('run eval');
     expect(latestEvalSummary(malformedPath)).toBe('run eval');
   });
+
+  it('rejects a report from a different release', () => {
+    tempDir = mkdtempSync(join(tmpdir(), 'exhibit-demo-summary-'));
+    const evalPath = join(tempDir, 'eval.json');
+    writeFileSync(evalPath, JSON.stringify({ release: 'oldsha', backend: 'memory', attempts: [{ passed: true }] }));
+
+    expect(latestEvalSummary(evalPath, 'newsha')).toBe('stale evaluation for oldsha; run eval for newsha');
+  });
 });
