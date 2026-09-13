@@ -237,24 +237,30 @@ function mutationTable(mutation?: MutationResult): string {
   return [header, ...rows].join('\n');
 }
 
-function argaBackendStatusSection(): string {
+function argaBackendStatusSection(m: MatrixResult): string {
+  const facts = [
+    'What running on the real service established (docs/ARGA.md):',
+    '',
+    "1. The seed reaches the twins. Arga's Gmail seed schema has no date and no raw field, so Dara Voss's messages and events are inserted through the twins' own Gmail and Calendar APIs after the environment is ready, keeping each original's bytes, `Date:` header and thread.",
+    "2. Side-effect grading has a real evidence source. The Google twins' admin state carries no op log, so each attempt reads the twins through their public APIs before and after the agent runs and derives writes from the difference. A twin that cannot be read forces the attempt to `degraded`, never a clean pass.",
+    '',
+    "Twin fidelity notes for Arga: the Drive twin stores an empty body for uploads whose media part is `message/rfc822` or `application/json` (Exhibit now uploads bytes as `application/octet-stream` with the type in the metadata); it resets a file to `Untitled` on a content-only update (Exhibit now sends the name and type back); it injects its own control-panel markup into `text/html` downloads, which broke every snapshot hash (the harness strips that tagged block on read); the Gmail seed drops dates (worked around above); `/admin/stub-hits` is not available on the Google twins, so stub hits are observed only for the fixture-backed GitHub and LinkedIn apps. GitHub and LinkedIn are not Arga twins in this setup, and Docs and Sheets writes are recorded from the agent's own client calls.",
+  ];
+  if (m.backend === 'arga') {
+    return ["Arga backend status. Every attempt in this batch ran on Arga Labs' hosted twins (Gmail, Google Calendar, Drive, Docs and Sheets).", '', ...facts].join('\n');
+  }
   return [
-    "Arga backend status. Every attempt in this batch ran on Exhibit's own in-memory twins, not the hosted Arga service. `harness/arga-backend.ts` (the code that would drive real Arga twins) exists and is tested, but only against a local fake control plane and fake twin admin endpoints (`test/arga-backend.test.ts`, plain `node:http`, no network) — it has never been run against the real service, because no `ARGA_API_KEY` is present.",
+    "Arga backend status. Every attempt in this batch ran on Exhibit's own in-memory twins, not the hosted Arga service. The same matrix runs on Arga Labs' hosted twins with `eval --backend arga`; regenerate this brief from such a batch to report it.",
     '',
-    'Two risks that carry into an event-day run on the real service (docs/ARGA.md, UNCONFIRMED section):',
-    '',
-    "1. The seed each scenario asks for might never reach the twin. The installed Arga SDK's own type declarations have no `seed_config` field on twin provisioning, so whether the live service actually honors the seed key Exhibit sends is unconfirmed. If it's silently ignored, every scenario would run against whatever default or generated data the twin makes up on its own, not against Dara Voss's seeded year — and a known-answer grade would be comparing against the wrong world with no visible error to say so.",
-    "2. Side-effect grading might be checking a list that's always empty. It assumes each twin's admin state carries a per-write op log (`ops: [{op, actor, detail}]`), but only `GET /admin/state` and `GET /admin/stub-hits` are documented, and whether that state actually includes such a log is unconfirmed. If it doesn't, every prohibited-side-effect check reads an empty log and passes automatically — a run that did something forbidden would grade clean instead of being caught, a false negative rather than a real pass.",
-    '',
-    'Twin fidelity notes for Arga: not run. No attempt in this batch used the Arga-hosted backend, so there is no live twin-fidelity observation to report beyond the two risks above.',
+    ...facts,
   ].join('\n');
 }
 
 function argaSection(m: MatrixResult, mutation?: MutationResult): string {
   return [
-    'Method. All twins run under Exhibit\'s in-memory harness (backend: ' +
-      m.backend +
-      "), one twin state per attempt, seeded through the scenario's `seed()` with a known answer. Between attempts the twins are reset. Each attempt is graded from the twin end state, not from Exhibit's own logs. After every attempt the grader reads the twins' stub-hit list; a stub hit on any endpoint Exhibit depends on fails the attempt.",
+    'Method. ' +
+      (m.backend === 'arga' ? "All twins run on Arga Labs' hosted twins (backend: arga)" : "All twins run under Exhibit's in-memory harness (backend: " + m.backend + ')') +
+      ", one twin state per attempt, seeded through the scenario's `seed()` with a known answer. Between attempts the twins are reset. Each attempt is graded from the twin end state, not from Exhibit's own logs. After every attempt the grader reads the twins' stub-hit list; a stub hit on any endpoint Exhibit depends on fails the attempt" + (m.backend === 'arga' ? ' (on Arga, only the fixture-backed GitHub and LinkedIn apps report stub hits; the Google twins expose no stub-hit endpoint).' : '.'),
     '',
     "The synthetic founder. \"Dara Voss\", a fictional founder with one seeded year, from harness/corpus.ts.",
     '',
@@ -272,7 +278,7 @@ function argaSection(m: MatrixResult, mutation?: MutationResult): string {
     '',
     mutationTable(mutation),
     '',
-    argaBackendStatusSection(),
+    argaBackendStatusSection(m),
     '',
     'Local (in-memory) twin fidelity notes: stub hits and missing endpoints observed, with the call that hit them.',
     '',

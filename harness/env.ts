@@ -47,6 +47,9 @@ export interface TwinsHandle {
   driveContent(fileId: string): Uint8Array | null;
   recordOp(app: string, op: string, actor: TwinOp['actor'], detail: Record<string, unknown>): void;
   extend?(): Promise<void>;
+  /** Hosted twins only: waits for queued world actions to land, then re-reads state. Scenarios call
+   * the admin* actions without awaiting (they are synchronous in memory). */
+  settle?(): Promise<void>;
   adminAddMessage(msg: AdminGmailMessage): unknown;
   adminShareFile(fileId: string, email: string): unknown;
   adminOverwriteFile(fileId: string, content: Uint8Array | string): unknown;
