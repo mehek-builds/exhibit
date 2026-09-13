@@ -127,7 +127,21 @@ export function createSigningExtension(opts: SigningExtensionOptions): AgentExte
         fileContent: pdf,
       });
       trace.tool('dropboxsign.signature_request.send', { letter_id: row.letter_id, signer: r.email, testMode: client.testMode }, { requestId: sent.requestId });
-      ledger.event({ run_id: runId, trace_id: trace.traceId, kind: 'signature', detail: { request_id: sent.requestId, letter_id: row.letter_id, status: 'created', test_mode: client.testMode, signer_email: r.email }, at: now.toISOString() });
+      ledger.event({
+        run_id: runId,
+        trace_id: trace.traceId,
+        kind: 'signature',
+        detail: {
+          request_id: sent.requestId,
+          letter_id: row.letter_id,
+          status: 'created',
+          test_mode: client.testMode,
+          signer_email: r.email,
+          recommender_confirmed: Boolean(state.confirmationMsgId) || bothApprovalsDisabled,
+          founder_approved: true,
+        },
+        at: now.toISOString(),
+      });
       state = { ...state, stage: 'requested', requestId: sent.requestId };
       writeState(ledger, row.letter_id, state);
       return;

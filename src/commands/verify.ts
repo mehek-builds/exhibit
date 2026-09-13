@@ -136,7 +136,7 @@ export async function cmdVerify(argv: string[], injected?: VerifyCliDeps): Promi
     console.log(`Synthetic demo verification: ${values.demo}`);
     console.log('Uses the fixture chain manifest exported by the demo, not Bitcoin mainnet.');
     console.log(renderTable(result));
-    return result.failed.length > 0 ? 1 : 0;
+    return result.failed.length > 0 || result.pending.length > 0 ? 1 : 0;
   }
   const deps = injected ?? (await liveVerifyDeps());
   try {

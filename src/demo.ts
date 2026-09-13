@@ -4,6 +4,7 @@ import { createHarnessEnv, graph } from '../harness/env.js';
 import { fullYearSeed, DARA } from '../harness/corpus.js';
 import type { FigureRow } from './ledger.js';
 import { affected } from './rules/graph.js';
+import { currentRelease } from './release.js';
 
 // The two-minute demo (PRD section 14), fully offline on in-memory twins: run the full synthetic
 // year with every available 6.13/6.14 extension wired in (fixture transports only, no real
@@ -39,7 +40,7 @@ function printNotCounted(text: string | null): void {
   if (m) log(`  ${m[1]!.trim().split('\n').join('\n  ')}`);
 }
 
-export function latestEvalSummary(evalPath: string): string {
+export function latestEvalSummary(evalPath: string, expectedRelease?: string): string {
   if (!existsSync(evalPath)) return 'run eval';
   try {
     const evalReport = JSON.parse(readFileSync(evalPath, 'utf8')) as {
@@ -48,7 +49,11 @@ export function latestEvalSummary(evalPath: string): string {
       pass?: number;
       total?: number;
       attempts?: { passed?: boolean }[];
+      release?: string;
     };
+    if (expectedRelease && evalReport.release !== expectedRelease) {
+      return `stale evaluation for ${evalReport.release ?? 'unknown release'}; run eval for ${expectedRelease}`;
+    }
     const backend = evalReport.backend ?? 'unknown';
     if (evalReport.attempts?.length) {
       const passed = evalReport.attempts.filter((attempt) => attempt.passed === true).length;
@@ -415,7 +420,7 @@ export async function runDemo(outDir: string): Promise<void> {
     // ---- Step 7: proof-loop line, computed from real data ----
     const a = affected(graph(), ['decisions-5-5']);
     const evalPath = join(process.cwd(), 'reports', 'eval-latest.json');
-    const evalLine = latestEvalSummary(evalPath);
+    const evalLine = latestEvalSummary(evalPath, currentRelease());
     log('');
     log(`Today's rule: accelerator acceptance counts under #1 and #2 (5.5). The dependents check over the prompt graph found ${a.prompts.length} prompt(s) depend on it (${a.prompts.join(', ') || 'none'}), exercised by scenarios ${a.scenarios.join(', ') || 'none'}. Latest scenario pass rate (reports/eval-latest.json): ${evalLine}. This demo run itself found ${allIssues.length} audit issue(s) across both runs.`);
   } finally {

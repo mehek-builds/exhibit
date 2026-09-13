@@ -24,6 +24,8 @@ export interface DiscoveryExtensionOptions {
   alwaysRun?: boolean;
 }
 
+export type DiscoveryOutcome = 'second_identifier_reject' | 'duplicate' | 'candidate';
+
 function dueToRun(lastRunIso: string | null, now: Date, cadenceDays: number): boolean {
   if (!lastRunIso) return true;
   const elapsedMs = now.getTime() - Date.parse(lastRunIso);
@@ -84,7 +86,7 @@ export function createDiscoveryExtension(opts: DiscoveryExtensionOptions): Agent
               run_id: runId,
               trace_id: trace.traceId,
               kind: 'discovery',
-              detail: { source, external_id: found.externalId, url: found.url, outcome: 'second_identifier_reject' },
+              detail: { source, external_id: found.externalId, url: found.url, outcome: 'second_identifier_reject' satisfies DiscoveryOutcome },
               at: now.toISOString(),
             });
             trace.span('discovery.second_identifier_reject', { source, external_id: found.externalId, url: found.url }, { names, second });
@@ -97,7 +99,7 @@ export function createDiscoveryExtension(opts: DiscoveryExtensionOptions): Agent
             run_id: runId,
             trace_id: trace.traceId,
             kind: 'discovery',
-            detail: { source, external_id: found.externalId, url: found.url, outcome: isDuplicate ? 'duplicate' : 'candidate' },
+            detail: { source, external_id: found.externalId, url: found.url, outcome: (isDuplicate ? 'duplicate' : 'candidate') satisfies DiscoveryOutcome },
             at: now.toISOString(),
           });
 

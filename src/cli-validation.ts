@@ -1,9 +1,11 @@
-const MAX_TIMER_MILLISECONDS = 2_147_483_647;
+const MIN_LIVE_INTERVAL_SECONDS = 60;
+const MAX_TIMER_SECONDS = 2_147_483;
+const MAX_EVAL_ATTEMPTS = 100;
 
 export function positiveSafeInteger(value: string, flag: string): number {
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 1) {
-    throw new Error(`${flag} must be a positive integer within JavaScript's safe range; received '${value}'.`);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > MAX_EVAL_ATTEMPTS) {
+    throw new Error(`${flag} must be a positive integer from 1 to ${MAX_EVAL_ATTEMPTS}; received '${value}'.`);
   }
   return parsed;
 }
@@ -13,12 +15,11 @@ export function intervalMilliseconds(value: string, flag: string): number {
   const milliseconds = seconds * 1000;
   if (
     !Number.isFinite(seconds)
-    || seconds <= 0
+    || seconds < MIN_LIVE_INTERVAL_SECONDS
+    || seconds > MAX_TIMER_SECONDS
     || !Number.isSafeInteger(milliseconds)
-    || milliseconds < 1
-    || milliseconds > MAX_TIMER_MILLISECONDS
   ) {
-    throw new Error(`${flag} must resolve to an integer from 1 to ${MAX_TIMER_MILLISECONDS} milliseconds; received '${value}'.`);
+    throw new Error(`${flag} must be from ${MIN_LIVE_INTERVAL_SECONDS} to ${MAX_TIMER_SECONDS} seconds, with millisecond precision; received '${value}'.`);
   }
   return milliseconds;
 }

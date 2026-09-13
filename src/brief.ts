@@ -513,24 +513,25 @@ function integrityAndIntegrationsSection(m: MatrixResult): string {
   const verifyCaught = verifyEvents.reduce((n, e) => n + eventResultCount(e.detail.failed), 0);
   const archived = allEvents(m, 'archive').filter((e) => e.detail.ok).length;
   const discovery = allEvents(m, 'discovery');
-  const bySource = new Map<string, { candidates: number; exhibits: number; rejected: number; merged: number }>();
+  const bySource = new Map<string, { observed: number; accepted: number; rejected: number; duplicates: number }>();
   for (const e of discovery) {
     const src = String(e.detail.source ?? 'unknown');
-    const row = bySource.get(src) ?? { candidates: 0, exhibits: 0, rejected: 0, merged: 0 };
-    row.candidates += 1;
-    if (e.detail.outcome === 'exhibit') row.exhibits += 1;
-    else if (e.detail.outcome === 'rejected_second_identifier') row.rejected += 1;
-    else if (e.detail.outcome === 'merged') row.merged += 1;
+    const row = bySource.get(src) ?? { observed: 0, accepted: 0, rejected: 0, duplicates: 0 };
+    row.observed += 1;
+    if (e.detail.outcome === 'candidate') row.accepted += 1;
+    else if (e.detail.outcome === 'second_identifier_reject') row.rejected += 1;
+    else if (e.detail.outcome === 'duplicate') row.duplicates += 1;
     bySource.set(src, row);
   }
   const discoveryTable = bySource.size
-    ? ['| Source | Candidates | Became exhibits | Rejected by the second-identifier rule | Merged with an inbox item |', '|---|---|---|---|---|', ...[...bySource.entries()].map(([src, r]) => `| ${src} | ${r.candidates} | ${r.exhibits} | ${r.rejected} | ${r.merged} |`)].join('\n')
+    ? ['| Source | Items observed | Accepted as candidates | Rejected by the second-identifier rule | Duplicate URLs |', '|---|---|---|---|---|', ...[...bySource.entries()].map(([src, r]) => `| ${src} | ${r.observed} | ${r.accepted} | ${r.rejected} | ${r.duplicates} |`)].join('\n')
     : 'No discovery events were recorded in this batch (S21 not run, or no candidates found).';
   const dsRequests = allEvents(m, 'signature');
-  const dsCreated = dsRequests.length;
+  const createdEvents = dsRequests.filter((e) => e.detail.status === 'created');
+  const dsCreated = createdEvents.length;
   const dsSigned = dsRequests.filter((e) => e.detail.status === 'signed').length;
   const dsDeclined = dsRequests.filter((e) => e.detail.status === 'declined').length;
-  const dsUnapproved = dsRequests.filter((e) => e.detail.status === 'signed' || e.detail.status === 'declined').length && dsRequests.filter((e) => !e.detail.test_mode).length;
+  const dsUnapproved = createdEvents.filter((e) => e.detail.recommender_confirmed !== true || e.detail.founder_approved !== true).length;
   const artifactsFiled = m.attempts.reduce((n, a) => n + a.runs.reduce((k, r) => k + r.filed.length, 0), 0);
   return [
     'Tamper-evidence. Every filed artifact\'s SHA-256 is stamped with OpenTimestamps, and every approved public source page is archived with the Internet Archive. `exhibit verify` re-checks the binder against both.',

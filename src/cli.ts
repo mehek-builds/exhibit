@@ -52,6 +52,9 @@ async function cmdEval(args: string[]): Promise<void> {
   });
   const { listScenarios, runMatrix } = await import('../harness/runner.js');
   const scenarios = values.scenario ? values.scenario.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+  if (values.scenario !== undefined && (!scenarios || scenarios.length === 0)) {
+    fail('--scenario must name at least one scenario, such as S1 or S1,S2.');
+  }
   const attempts = positiveSafeInteger(values.attempts!, '--attempts');
   const gate = values.gate;
   if (gate !== 'mcp' && gate !== 'library') fail(`Unknown --gate '${gate}'; expected 'mcp' or 'library'.`);
@@ -358,7 +361,7 @@ async function cmdWatch(args: string[]): Promise<void> {
 function cmdHelp(): void {
   console.log(`Exhibit CLI
 
-  eval [--core] [--scenario S1,S2] [--attempts 3] [--gate mcp|library] [--backend memory|arga]
+  eval [--core] [--scenario S1,S2] [--attempts 1-100] [--gate mcp|library] [--backend memory|arga]
                                                --backend arga requires ARGA_API_KEY in the environment
   mutate
   brief [--out BRIEF.md]
@@ -368,8 +371,8 @@ function cmdHelp(): void {
   demo [--out out/demo]
   lift --issue <text> --gmail <path> --expect-status <status> [--criteria 3,4] [--never 1] [--title ...]
   run --live
-  watch --live [--interval <seconds>]
-  serve [--interval <seconds>] [--port <n>]   Twilio webhook plus the scheduled run (live)
+  watch --live [--interval <seconds, min 60>]
+  serve [--interval <seconds, min 60>] [--port <n>]   Twilio webhook plus the scheduled run (live)
   verify [--demo out/demo]                    Re-check a live binder or an exported synthetic demo
   loop                                        Lifted-scenario loop status and detector labels from reports/eval-latest.json
   help`);
