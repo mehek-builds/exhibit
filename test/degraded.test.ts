@@ -40,18 +40,15 @@ import {
   failingApp,
   failingDropboxSign,
   failingFetcher,
-  failingLemmaClient,
   failingModel,
   failingResearcher,
   failingStructured,
   failingTransport,
   failingTwilio,
-  lemmaTracerWith,
   spyResearcher,
   tryRun,
   unavailableGate,
 } from '../harness/faults.js';
-import type { LemmaFailMode } from '../harness/faults.js';
 import { DISCOVERY_TIER1_FIXTURES, GDELT_ARTICLES } from '../harness/fixtures/discovery-tier1.js';
 import { WEB_FIXTURES } from '../harness/fixtures.js';
 import { createIntegrityFixtures } from '../harness/fixtures/integrity.js';
@@ -898,35 +895,6 @@ describe('PRD 10 row: worth-sending down', () => {
   });
 });
 
-// =====================================================================================
-describe('PRD 10 row: Lemma down', () => {
-  const lemmaSeed = () => seed({ gmail: [...E.press, ...E.podcast, ...E.accelerator] });
-
-  for (const mode of ['start', 'delivery', 'record'] as LemmaFailMode[]) {
-    it(`Lemma ${mode} failure: everything still runs and the result is Exhibit's own; only tracing stops`, async () => {
-      const baseline = mk({ seed: lemmaSeed(), profile: PROFILE_NONE });
-      const base = await baseline.run();
-
-      const env = mk({ seed: lemmaSeed(), profile: PROFILE_NONE });
-      const client = failingLemmaClient(mode);
-      const tracer = lemmaTracerWith(client);
-      env.deps.tracer = tracer;
-      env.tracer = tracer;
-
-      const r = await env.run();
-      expect(client.calls).toBeGreaterThan(0);
-      expect(tracer.deliveryErrors.length).toBeGreaterThan(0);
-      expect(r.outcome).toBe('ok');
-      expect(r.filed.length).toBe(base.filed.length);
-      expect(r.summary).toEqual({ ...base.summary });
-      expect(env.ledger.exhibits().length).toBe(baseline.ledger.exhibits().length);
-      expect(tracer.events({ traceId: r.traceId }).length).toBeGreaterThan(0);
-      expect(env.ledger.runs().at(-1)?.outcome).toBe('ok');
-      expect(scorecardText(env)).toBe(scorecardText(baseline));
-      noProhibitedSideEffects(env);
-    });
-  }
-});
 
 // =====================================================================================
 describe('PRD 10 row: uberprompt down', () => {

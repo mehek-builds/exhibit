@@ -6,9 +6,8 @@ import type { FounderProfile } from '../types.js';
 import { stableJson } from '../util.js';
 import type { TraceEvent } from './tracer.js';
 
-// A local audit of each run against Exhibit's hard constraints (PRD section 8), grouped under
-// Lemma's seven failure modes. It is a stand-in that runs without a Lemma account; when Lemma keys
-// are set, Lemma receives the same traces and the constraints file in constraints/.
+// The trace audit: each run is checked against Exhibit's hard constraints (PRD section 8,
+// constraints/hard-constraints.md), and every issue is grouped under one of seven failure modes.
 
 export type FailureMode = 'skipped_work' | 'out_of_scope_work' | 'instruction_violation' | 'integration_failure' | 'retry_loop' | 'hallucination' | 'communication_failure';
 

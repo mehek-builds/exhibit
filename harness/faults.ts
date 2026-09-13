@@ -7,7 +7,6 @@ import type { HttpRequest, HttpResponse, HttpTransport, StructuredResearch } fro
 import { UnavailableGate } from '../src/letters/worthSending.js';
 import type { GateDecision } from '../src/letters/worthSending.js';
 import type { EvidenceModel, ModelCall, ModelClassification, ModelMapping } from '../src/models/types.js';
-import { LemmaTracer } from '../src/observability/tracer.js';
 import type { FetchResult, ResearchRequest, ResearchResult, Researcher, WebFetcher } from '../src/research/types.js';
 import type { HarnessEnv } from './env.js';
 
@@ -189,46 +188,6 @@ export function failingTransport(transport: HttpTransport, hostPattern: RegExp |
     },
   };
   return t;
-}
-
-// ---------- Lemma ----------
-
-export type LemmaFailMode = 'start' | 'delivery' | 'record';
-
-interface LemmaTraceLike {
-  recordTool(e: unknown): void;
-  recordGeneration(e: unknown): void;
-  recordSpan(e: unknown): void;
-}
-
-/**
- * A stand-in for the `Lemma` client whose delivery always fails. `start`: `trace()` rejects before
- * running the callback. `delivery`: the callback runs, then ingest rejects. `record`: every
- * record call throws while the trace itself resolves.
- */
-export function failingLemmaClient(mode: LemmaFailMode): { calls: number; trace<T>(opts: unknown, fn: (t: LemmaTraceLike) => Promise<T>): Promise<T> } {
-  const client = {
-    calls: 0,
-    async trace<T>(_opts: unknown, fn: (t: LemmaTraceLike) => Promise<T>): Promise<T> {
-      client.calls += 1;
-      if (mode === 'start') throw new Error('lemma ingest unreachable (injected fault)');
-      const thrower = () => {
-        throw new Error('lemma record rejected (injected fault)');
-      };
-      const handle: LemmaTraceLike = mode === 'record' ? { recordTool: thrower, recordGeneration: thrower, recordSpan: thrower } : { recordTool() {}, recordGeneration() {}, recordSpan() {} };
-      const out = await fn(handle);
-      if (mode === 'delivery') throw new Error('lemma ingest returned 503 (injected fault)');
-      return out;
-    },
-  };
-  return client;
-}
-
-/** A real LemmaTracer whose Lemma client is replaced by a failing double (dummy keys; the real client never sends). */
-export function lemmaTracerWith(client: ReturnType<typeof failingLemmaClient>): LemmaTracer {
-  const tracer = new LemmaTracer({ apiKey: 'lemma_test_key', projectId: 'proj_test', release: 'degraded-test' });
-  (tracer as unknown as { lemma: unknown }).lemma = client;
-  return tracer;
 }
 
 // ---------- worth-sending ----------

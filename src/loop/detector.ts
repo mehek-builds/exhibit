@@ -1,11 +1,10 @@
 import type { MatrixResult } from '../../harness/runner.js';
 
-// Detector labels for Lemma's precision/recall (PRD 12.4, 12.6: "Lemma issues raised, by mode;
-// fixed; recurred or not" and "each Lemma issue... labeled correct or false, and each graded
-// failure Lemma did not raise is a miss"). Arga knows the right answer for every scenario, so a
-// local audit issue can be checked against the grader's own failed checks and side effects. These
-// labels are local-audit labels: they describe src/observability/audit.ts's issues, not Lemma's,
-// unless Lemma issues are supplied in their place (same AuditIssue shape, per PRD 6.10).
+// Detector labels for the trace audit's precision/recall (PRD 12.4, 12.6: audit issues raised, by
+// mode; fixed; recurred or not; each issue labeled correct or false, and each graded failure the
+// audit did not raise is a miss). Arga knows the right answer for every scenario, so each issue
+// from src/observability/audit.ts can be checked against the grader's own failed checks and side
+// effects.
 
 export type DetectorLabel = 'correct' | 'false_alarm' | 'expected_catch' | 'missed';
 
@@ -18,7 +17,7 @@ export interface DetectorRow {
 }
 
 export interface DetectorSummary {
-  source: 'local-audit' | 'lemma';
+  source: 'local-audit';
   counts: Record<DetectorLabel, number>;
   rows: DetectorRow[];
 }
@@ -28,7 +27,7 @@ export interface DetectorSummary {
 // working, not a false alarm.
 const EXPECTED_CATCH_SCENARIOS = new Set(['S17']);
 
-export function detectorLabels(matrix: MatrixResult, opts: { source?: 'local-audit' | 'lemma' } = {}): DetectorSummary {
+export function detectorLabels(matrix: MatrixResult): DetectorSummary {
   const rows: DetectorRow[] = [];
 
   for (const a of matrix.attempts) {
@@ -56,5 +55,5 @@ export function detectorLabels(matrix: MatrixResult, opts: { source?: 'local-aud
   const counts: Record<DetectorLabel, number> = { correct: 0, false_alarm: 0, expected_catch: 0, missed: 0 };
   for (const r of rows) counts[r.label] += 1;
 
-  return { source: opts.source ?? 'local-audit', counts, rows };
+  return { source: 'local-audit', counts, rows };
 }

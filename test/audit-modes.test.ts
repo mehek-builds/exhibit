@@ -5,8 +5,7 @@ import { S27 } from '../harness/scenarios/s27-audit-modes.js';
 import { detectorLabels } from '../src/loop/detector.js';
 import type { MatrixResult } from '../harness/runner.js';
 
-// PRD 12.4 claims the local audit (src/observability/audit.ts, the Lemma stand-in) catches all seven
-// of Lemma's failure modes. Today's graded runs only ever exercise `hallucination` (S17's seeded
+// PRD 12.4 claims the trace audit (src/observability/audit.ts) catches all seven failure modes. Today's graded runs only ever exercise `hallucination` (S17's seeded
 // figure), so this suite is the first proof that the other six are actually detected: one injected
 // fault per mode (harness/scenarios/s27-audit-modes.ts), plus a clean control run.
 //
@@ -30,7 +29,7 @@ function auditCheck(r: AttemptResult, mode: string) {
   return r.checks.find((c) => c.name.startsWith(`audit raises ${mode}`));
 }
 
-describe("S27: local audit detects each of Lemma's seven failure modes", () => {
+describe('S27: the trace audit detects each of the seven failure modes', () => {
   it('skipped_work: a qualifying item whose filing was dropped is caught', async () => {
     const r = await attempt('S27-skipped-work');
     expect(r.error).toBeUndefined();

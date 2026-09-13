@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import type { AuditIssue } from '../observability/audit.js';
 import type { MatrixResult } from '../../harness/runner.js';
 
-// The Lemma-to-Arga loop (PRD 12.6, harness/lifted/README.md): a failing input becomes a permanent
+// The audit-to-Arga loop (PRD 12.6, harness/lifted/README.md): a failing input becomes a permanent
 // regression scenario. An issue is resolved only when its lifted scenario passes 3 of 3 in the
 // latest batch and does not recur, never on a merged fix alone.
 
@@ -19,13 +19,13 @@ interface LiftedGmail {
 }
 
 export interface LiftIssueInput {
-  issue: AuditIssue | { title: string; detail: string; source: 'harness' | 'lemma' | 'audit' };
+  issue: AuditIssue | { title: string; detail: string; source: 'harness' | 'audit' };
   inputs: { gmail: LiftedGmail[] };
   expect: { source: string; status: string; criteria?: number[]; never?: number[] };
   id?: string;
 }
 
-function sourceOf(issue: LiftIssueInput['issue']): 'harness' | 'lemma' | 'audit' {
+function sourceOf(issue: LiftIssueInput['issue']): 'harness' | 'audit' {
   return 'source' in issue ? issue.source : 'audit';
 }
 

@@ -11,7 +11,7 @@ import { McpWorthSendingGate } from './letters/worthSending.js';
 import { AnthropicModel } from './models/anthropic.js';
 import { HeuristicModel } from './models/heuristic.js';
 import type { EvidenceModel } from './models/types.js';
-import { createTracer } from './observability/tracer.js';
+import { LocalTracer } from './observability/tracer.js';
 import { AnthropicResearcher, LiveFetcher } from './research/anthropic.js';
 import { sourcePolicy } from './research/corroborator.js';
 import type { Researcher, ResearchResult, WebFetcher } from './research/types.js';
@@ -348,7 +348,7 @@ export async function buildLiveDeps(env: NodeJS.ProcessEnv): Promise<LiveDepsRes
   const profile = loadProfile(env);
   const apps = createLiveApps(env);
   const ledger = new Ledger(env.EXHIBIT_LEDGER ?? '.exhibit/ledger.db');
-  const tracer = createTracer(env, '.exhibit/traces');
+  const tracer = new LocalTracer('.exhibit/traces');
   const model = resolveModel(env);
   const { researcher, fetcher } = resolveResearcher(env);
   const gate = new McpWorthSendingGate();
@@ -371,7 +371,7 @@ export async function buildLiveDeps(env: NodeJS.ProcessEnv): Promise<LiveDepsRes
     policy: sourcePolicy(graph, false),
     gate,
     clock: { now: () => new Date() },
-    release: env.LEMMA_RELEASE ?? 'dev',
+    release: env.EXHIBIT_RELEASE ?? 'dev',
     extend: async () => {},
     mode: 'watch',
     extensions,
@@ -412,7 +412,7 @@ export async function buildArgaDeps(env: NodeJS.ProcessEnv, opts: ArgaDepsOption
   const apps = argaApps(run, owner, profile);
 
   const ledger = new Ledger(env.EXHIBIT_LEDGER ?? ':memory:');
-  const tracer = createTracer(env, env.EXHIBIT_TRACE_DIR ?? null);
+  const tracer = new LocalTracer(env.EXHIBIT_TRACE_DIR ?? null);
   const model = resolveModel(env);
   const { researcher, fetcher } = resolveResearcher(env);
   const gate = new McpWorthSendingGate();
@@ -430,7 +430,7 @@ export async function buildArgaDeps(env: NodeJS.ProcessEnv, opts: ArgaDepsOption
     policy: sourcePolicy(graph, false),
     gate,
     clock: { now: () => new Date() },
-    release: env.LEMMA_RELEASE ?? 'dev',
+    release: env.EXHIBIT_RELEASE ?? 'dev',
     extend: () => argaExtend(apiKey, run.runId, { baseUrl: env.ARGA_BASE_URL }),
     mode: 'harness',
     scenarioId: opts.scenarioId ?? null,

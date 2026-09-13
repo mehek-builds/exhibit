@@ -284,7 +284,7 @@ const LIVE_ENV_VARS = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REFRE
 function explainLiveEnv(): void {
   console.log('Live mode needs --live plus these env vars:');
   console.log(`  Required: ${LIVE_ENV_VARS.join(', ')}`);
-  console.log('  Optional: ANTHROPIC_API_KEY (else the heuristic model), LEMMA_API_KEY + LEMMA_PROJECT_ID (else local tracing only),');
+  console.log('  Optional: ANTHROPIC_API_KEY (else the heuristic model),');
   console.log('            EXHIBIT_PROFILE (path to a founder profile JSON; required to run).');
 }
 

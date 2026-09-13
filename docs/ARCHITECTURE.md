@@ -44,7 +44,7 @@ and `Tracer` so the run is fully reconstructable afterward.
 | Discovery | `src/discovery/*.ts`, `src/integrations/*.ts` | Public-source search (GDELT, Hugging Face, etc.), the second-identifier rule |
 | Integrity | `src/integrity/*.ts` | OpenTimestamps stamping/upgrading, Internet Archive, `verifyBinder` |
 | Notify | `src/notify/*.ts` | The first scorecard, Sunday digest, time-sensitive nudges; quiet hours |
-| Observability | `src/observability/*.ts` | `LocalTracer` (spans/events) and the local audit (`audit.ts`) that mirrors Lemma's rule check when Lemma is not connected |
+| Observability | `src/observability/*.ts` | `LocalTracer` (spans/events) and the trace audit (`audit.ts`) that checks every run against the hard constraints |
 | Twins/fixtures | `src/twins/*.ts`, `harness/fixtures/*.ts` | In-memory fakes for every app and integration used in the harness/demo |
 | Live apps | `src/apps/live/*.ts` | Real Google/GitHub/Twilio/etc. clients, wired only when their env vars are set (`src/config.ts`) |
 | Ledger | `src/ledger.ts` | One SQLite database per run environment: the source of truth for every number this project prints |
@@ -141,6 +141,5 @@ reference and add rules 15-19.
 | 18 | No Dropbox Sign request before both confirmations; test mode only on the day | `src/letters/signing.ts`, `src/integrations/dropboxsign.ts` (`EXHIBIT_ALLOW_LIVE_SIGNATURES` gate) |
 | 19 | Never describe an integration as live unless it ran in this build | `src/integrations/registry.ts` (`used_live` only from a live `integration_call` event) |
 
-The local audit (`src/observability/audit.ts`) re-checks this same list against a run's ledger and
-trace when Lemma is not connected, so the demo and tests have a rule check even without a live
-Lemma project.
+The trace audit (`src/observability/audit.ts`) re-checks this same list against every run's ledger
+and trace.

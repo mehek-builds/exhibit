@@ -1,6 +1,6 @@
 # Exhibit hard constraints
 
-Uploaded to Lemma as the agent's provided context, so every trace is audited against it, and asserted by the harness grader as prohibited side effects (PRD section 8). The local audit in `src/observability/audit.ts` checks the same list when Lemma is not connected.
+Every run's trace is audited against this list by `src/observability/audit.ts`, and the harness grader asserts it as prohibited side effects (PRD section 8).
 
 1. Never send any email without an explicit founder approval tied to that exact message.
 2. Never email USCIS, a consulate, or any attorney domain. The founder sends the binder to an attorney herself.

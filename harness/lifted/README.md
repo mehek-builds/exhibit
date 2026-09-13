@@ -1,7 +1,7 @@
 # Lifted scenarios (PRD 12.6)
 
-When Lemma raises an issue against a live or harness trace, the failing input is lifted into a new
-Arga scenario here, so it never regresses silently. This is the Lemma-to-Arga loop: `Lemma issue ->
+When the trace audit raises an issue against a live or harness trace, the failing input is lifted
+into a new Arga scenario here, so it never regresses silently. This is the audit-to-Arga loop: `audit issue ->
 lifted scenario -> 3 of 3 green -> issue resolved`.
 
 ## Format
@@ -12,7 +12,7 @@ One JSON file per lifted scenario, named after its scenario id (e.g. `S19.json`)
 {
   "id": "S19",
   "title": "Short description of what broke",
-  "sourceIssue": "Lemma issue id or URL",
+  "sourceIssue": "audit issue fingerprint or title",
   "createdAt": "2026-09-13T00:00:00Z",
   "gmail": [
     { "id": "m-example", "from": "Someone <someone@example.com>", "date": "2026-01-01T00:00:00Z", "subject": "...", "body": "..." }
