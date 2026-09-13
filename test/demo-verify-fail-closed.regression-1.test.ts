@@ -97,6 +97,19 @@ describe('exported demo verification fails closed', () => {
     await expect(cmdVerify(['--demo', outDir])).resolves.toBe(1);
   });
 
+  it('fails a timestamp proof whose artifact was removed from the manifest', async () => {
+    const { outDir, binder } = makeExport({ kind: 'synthetic-fixture', roots: {}, artifacts: ['listed.eml'] });
+    mkdirSync(join(binder, 'sub'), { recursive: true });
+    writeFileSync(join(binder, 'listed.eml'), 'evidence');
+    writeFileSync(join(binder, 'sub', 'unlisted.eml'), 'tampered');
+    writeFileSync(join(binder, 'sub', 'unlisted.eml.ots'), 'proof bytes');
+
+    const result = await verifyExportedDemo(outDir);
+
+    expect(result.files_checked).toContain('sub/unlisted.eml');
+    expect(result.failed).toContainEqual({ path: 'sub/unlisted.eml', reason: 'timestamp proof exists but the artifact is not listed in the synthetic chain manifest' });
+  });
+
   it('returns one from cmdVerify and the package binary for malformed exports without live credentials', async () => {
     const { outDir, binder } = makeExport({ kind: 'synthetic-fixture', roots: {}, artifacts: ['file.eml'] });
     writeFileSync(join(binder, 'file.eml'), 'evidence');

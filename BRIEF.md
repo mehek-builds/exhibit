@@ -1,6 +1,6 @@
 # Exhibit: system and reliability brief
 
-Batch: batch_1789334555656 | Release: 86de204 | Brief generated: 2026-09-13T21:22:55.270Z | Eval window: 2026-09-13T21:22:21.668Z to 2026-09-13T21:22:35.656Z
+Batch: batch_1789335705986 | Release: 1e26016 | Brief generated: 2026-09-13T21:41:49.772Z | Eval window: 2026-09-13T21:41:10.172Z to 2026-09-13T21:41:45.986Z
 
 ## 1. What it does
 
@@ -112,18 +112,7 @@ Known answers:
 
 Mutation results (every mutation tried, whether it was killed or survived):
 
-| Mutation | Disabled rule(s) | Scenario | Result | Detail |
-|---|---|---|---|---|
-| disable D-accelerator-acceptance (S2 must go red) | D-accelerator-acceptance | S2 | killed (went red as expected) | criteria {1,2}: 2 |
-| disable D-funding-remuneration + T-funding-not-award (S3 must go red) | D-funding-remuneration, T-funding-not-award | S3 | killed (went red as expected) | criteria exactly [8]: 1; status qualifying: needs_attorney |
-| disable X-second-identifier (S21 must go red) | X-second-identifier | S21 | killed (went red as expected) | namesake article never became a candidate: https://tastelisbon.example/2026/02/chef-dara-voss-tasca; namesake logged as second_identifier_reject: [{"source":"gdelt","external_id":"https://tastelisbon.example/2026/02/chef-dara-voss-tasca","url":"https://tastelisbon.example/2026/02/chef-dara-voss-tasca","outcome":"candidate"}]; look-alike Form D never became a candidate: https://www.sec.example/edgar/loomworks-capital-formd-2026; look-alike Form D logged as second_identifier_reject: [{"source":"fake-tier2","external_id":"loomworks-capital-formd-2026","url":"https://www.sec.example/edgar/loomworks-capital-formd-2026","outcome":"candidate"}] |
-| disable TX-verified-number (S20 must go red) | TX-verified-number | S20 | killed (went red as expected) | unknown number logged as ignored: {"sid":"SMin_0001","from":"+15559990000","body":"approve 1","command":"approve","args":[{"kind":"approve","figures":[1]}],"action":"parsed"} |
-| disable TX-confirm-irreversible (S20 must go red) | TX-confirm-irreversible | S20 | killed (went red as expected) | exactly one clarifying text across the whole run: ["I didn't understand \"ok do it\". Reply approve, deny <number> <reason>, pause until <date>, resume, next, status, stop, or start.","I don't have anything pending your yes right now."]; a confirmation was pending right after "approve all": null; more than one figure was still pending right after "approve all" (nothing applied yet): 0; pending figures dropped after "yes": 0 -> 0; exactly one confirmation text sent: 0 |
-| disable X-translation-opt-in (S24 must go red) | X-translation-opt-in | S24 | killed (went red as expected) | exactly one DeepL call: 2; no DeepL-derived draft for the not-opted-in French item: translation-draft.md; translation event for m-fr records opted_in: false, called: false: {"source":"gmail:m-fr","opted_in":true,"called":true,"chars":320} |
-| disable T-press-release + T-paid-placement (S1 must go red on the press-release trap) | T-press-release, T-paid-placement | S1 | killed (went red as expected) | Press release (gmail:m-pr): status: expected rejected, got qualifying; Press release (gmail:m-pr): eb1a_status: expected rejected, got qualifying; Press release (gmail:m-pr): never qualifying under {3}: status qualifying, criteria {3}; exactly 14 qualifying candidates: got 15: github:repo:loomwork/flakehound, github:review:r-orbit, item:captable.example|executed founder stock purchase agreement|2025-10-02, item:corpregistry.example|certificate of incorporation filed loomwork inc|2025-09-22, item:prwire.example|distributed loomwork launches flakehound 2 0|2026-08-20, item:safehub.example|congratulations your safe financing has closed|2026-03-05, judging:buildnight.example, judging:hackmesa.example, url:buildreport.example/interviews/dara-voss, url:devtoolsweekly.example/2026/03/loomwork-dara-voss-flaky-ci, url:forgeaccel.example/batches/f26, url:launchfest.example/2026/winners, url:ridgelinefellows.example/2026-fellows, url:shipitpod.example/episodes/212, url:signalnoise.example/2026/20-founders |
-| disable X-exhibition-eb1a-only (S16 must go red) | X-exhibition-eb1a-only | S16 | killed (went red as expected) | exhibition eb1a_criteria includes 'vii': ; exhibition eb1a_status qualifying: rejected; exhibition filed under 'eb1a-only/': undefined |
-| disable X-integrity-tamper-check (S22 verify must go red) | X-integrity-tamper-check | S22 | killed (went red as expected) | failed=[], passed=0 |
-| disable X-sign-both-approvals (signing must create a request after only one approval) | X-sign-both-approvals | S23 | killed (went red as expected) | state={"stage":"requested","approvalMsgId":"msg_sent_0066","requestId":"sigreq_0001"}, requests=["marco@hackmesa.example"] |
+Mutation results: not run in this batch (no `reports/mutation-latest.json` — run `exhibit mutate` first).
 
 Arga backend status. Every attempt in this batch ran on Exhibit's own in-memory twins, not the hosted Arga service. `harness/arga-backend.ts` (the code that would drive real Arga twins) exists and is tested, but only against a local fake control plane and fake twin admin endpoints (`test/arga-backend.test.ts`, plain `node:http`, no network) — it has never been run against the real service, because no `ARGA_API_KEY` is present.
 
@@ -243,7 +232,7 @@ Discovery. Candidates found by source, and what became of them:
 
 Numbers from official data. Figures drawn from structured APIs versus web pages: not tracked separately in this batch's events; see section 10.
 
-Letters. Dropbox Sign requests (test mode): 6 created, 3 signed, 3 declined, 3 refused before sending by the day-mode safety gate, and 0 created without both approvals (target 0, read back from the Dropbox Sign event log).
+Letters. Dropbox Sign requests (test mode): 6 created, 3 signed, 3 declined, 3 refused before sending by the day-mode safety gate, and 0 created without both approvals (target 0, counted from Exhibit's own signature events, which record whether the recommender's confirmation and the founder's approval were present when each request was created).
 
 ## 11. What was real and what was simulated
 

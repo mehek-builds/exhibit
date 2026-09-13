@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
 import type { DriveApi } from '../apps/types.js';
@@ -123,6 +123,19 @@ export async function verifyExportedDemo(outDir: string): Promise<VerifyBinderRe
     } catch (error) {
       result.failed.push({ path: displayPath, reason: `proof could not be read: ${String(error)}` });
     }
+  }
+  // Fail closed on proofs the manifest doesn't list: deleting a tampered file's manifest entry must
+  // not make verify skip it.
+  const listed = new Set(artifacts);
+  const proofs = (readdirSync(binderRoot, { recursive: true }) as string[])
+    .map((p) => p.split(sep).join('/'))
+    .filter((p) => p.endsWith('.ots'))
+    .sort();
+  for (const proof of proofs) {
+    const artifact = proof.slice(0, -'.ots'.length);
+    if (listed.has(artifact)) continue;
+    result.files_checked.push(artifact);
+    result.failed.push({ path: artifact, reason: 'timestamp proof exists but the artifact is not listed in the synthetic chain manifest' });
   }
   return result;
 }
